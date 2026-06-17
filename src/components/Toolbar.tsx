@@ -1,22 +1,27 @@
-import React from 'react';
-import { MousePointer, PenTool, Square, Circle, Triangle, Trash2, ToggleLeft, ToggleRight, Sparkles, Layers, Ruler, Undo2 } from 'lucide-react';
+import React, { useRef } from 'react';
+import { MousePointer, PenTool, Square, Circle, Triangle, ToggleLeft, ToggleRight, Sparkles, Layers, Ruler, Undo2, ImagePlus, Bot, Loader2, PanelRightOpen } from 'lucide-react';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { DrawingMode, StructureType } from '../types/drawing';
 import { extractCenterLinesFromWalls } from '../utils/geometry';
+import { fetchAIAnalysis } from '../utils/api';
+// @ts-ignore
+import DxfParser from 'dxf-parser';
 
 export const Toolbar: React.FC = () => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dxfInputRef = useRef<HTMLInputElement>(null);
+  
   const { 
-    currentMode, currentType, isOrthoMode, lines, unit, scaleRatio,
-    setMode, setType, setOrthoMode, clearLines, setUnit, setScaleRatio, undoLine 
+    currentMode, currentType, isOrthoMode, lines, unit, scaleRatio, backgroundImage, isAnalyzing, isSidebarOpen,
+    setMode, setType, setOrthoMode, clearLines, setUnit, setScaleRatio, undoLine, setBackgroundImage, setAiPolygons, setIsAnalyzing, setDxfLayers, toggleSidebar
   } = useDrawingStore();
 
-  // 🪄 도형 그리기 모드 추가
   const modes: { id: DrawingMode; label: string; icon: React.ReactNode }[] = [
-    { id: 'SELECT', label: '선택 및 이동', icon: <MousePointer size={18} /> },
-    { id: 'DRAW_LINE', label: '선 그리기', icon: <PenTool size={18} /> },
-    { id: 'DRAW_RECT', label: '사각형 그리기', icon: <Square size={18} /> },
-    { id: 'DRAW_CIRCLE', label: '원 그리기', icon: <Circle size={18} /> },
-    { id: 'DRAW_TRIANGLE', label: '삼각형 그리기', icon: <Triangle size={18} /> },
+    { id: 'SELECT', label: '이동/선택', icon: <MousePointer size={18} /> },
+    { id: 'DRAW_LINE', label: '선', icon: <PenTool size={18} /> },
+    { id: 'DRAW_RECT', label: '사각형', icon: <Square size={18} /> },
+    { id: 'DRAW_CIRCLE', label: '원', icon: <Circle size={18} /> },
+    { id: 'DRAW_TRIANGLE', label: '삼각형', icon: <Triangle size={18} /> },
   ];
 
   const structureTypes: { id: StructureType; label: string; color: string }[] = [
@@ -26,115 +31,111 @@ export const Toolbar: React.FC = () => {
     { id: 'CENTER_LINE', label: '중심선 (Center)', color: 'bg-amber-500' },
   ];
 
-  const handleAutoCenterLine = () => {
-    const generated = extractCenterLinesFromWalls(lines);
-    if (generated.length === 0) {
-      alert('중심선을 추출할 수 있는 평행한 벽체(WALL) 데이터가 부족합니다.');
-      return;
-    }
-    const store = useDrawingStore.getState();
-    useDrawingStore.setState({ lines: [...store.lines, ...generated] });
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBackgroundImage(URL.createObjectURL(file));
+  };
+
+  // 📐 DXF 벡터 파일 파싱 및 레이어 추출
+  const handleDxfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const parser = new DxfParser();
+        const dxf = parser.parseSync(evt.target?.result as string);
+        
+        if (dxf && dxf.tables && dxf.tables.layer && dxf.tables.layer.layers) {
+          const layers = Object.keys(dxf.tables.layer.layers).map(name => ({
+            name, visible: true
+          }));
+          setDxfLayers(layers);
+          alert(`✅ ${layers.length}개의 CAD 레이어를 성공적으로 분석했습니다! 우측 사이드바를 확인하세요.`);
+        }
+      } catch (err) {
+        console.error("DXF 파싱 오류:", err);
+        alert("DXF 파일을 읽는 데 실패했습니다. 지원하지 않는 버전이거나 손상된 파일일 수 있습니다.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleAIAnalysis = async () => {
+    if (!backgroundImage) return alert("도면 이미지를 먼저 불러와주세요.");
+    setIsAnalyzing(true);
+    try {
+      const result = await fetchAIAnalysis(backgroundImage);
+      setAiPolygons(result);
+    } catch (error) { alert("AI 서버 통신 오류"); } finally { setIsAnalyzing(false); }
   };
 
   return (
     <div className="w-full h-14 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 select-none z-20">
-      <div className="flex items-center space-x-2">
-        <Layers className="text-indigo-500 w-5 h-5" />
-        <span className="text-zinc-100 font-bold text-sm tracking-wider">StruXureAI</span>
+      <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2 mr-2">
+          <Layers className="text-indigo-500 w-5 h-5" />
+          <span className="text-zinc-100 font-bold text-sm tracking-wider">StruXureAI</span>
+        </div>
+        
+        <input type="file" ref={fileInputRef} accept="image/*" hidden onChange={handleImageUpload} />
+        <input type="file" ref={dxfInputRef} accept=".dxf" hidden onChange={handleDxfUpload} />
+        
+        <div className="flex items-center space-x-1.5 bg-zinc-950 p-1 rounded-md border border-zinc-800">
+          <button onClick={() => fileInputRef.current?.click()} className="flex items-center space-x-1.5 text-xs bg-zinc-800 text-zinc-300 px-2 py-1.5 rounded hover:bg-zinc-700 hover:text-white transition-colors">
+            <ImagePlus size={14} /><span>이미지</span>
+          </button>
+          <button onClick={() => dxfInputRef.current?.click()} className="flex items-center space-x-1.5 text-xs bg-zinc-800 text-zinc-300 px-2 py-1.5 rounded hover:bg-zinc-700 hover:text-white transition-colors">
+            <Layers size={14} /><span>DXF 캐드</span>
+          </button>
+        </div>
+
+        <button onClick={handleAIAnalysis} disabled={isAnalyzing || !backgroundImage} className={`flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-md transition-all shadow-md ${isAnalyzing ? 'bg-zinc-700 text-zinc-400' : !backgroundImage ? 'bg-emerald-900/30 text-emerald-700/50' : 'bg-emerald-600 text-white hover:bg-emerald-500'}`}>
+          {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />}
+          <span>{isAnalyzing ? 'AI 분석 중...' : 'AI 도면 인식'}</span>
+        </button>
       </div>
 
       <div className="flex items-center bg-zinc-950 p-1 rounded-lg border border-zinc-800">
         {modes.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => setMode(m.id)}
-            title={m.label}
-            className={`flex items-center justify-center p-2 rounded-md transition-all ${
-              currentMode === m.id ? 'bg-indigo-600 text-white shadow-md' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-            }`}
-          >
+          <button key={m.id} onClick={() => setMode(m.id)} title={m.label} className={`flex items-center justify-center p-1.5 px-2 rounded-md transition-all ${currentMode === m.id ? 'bg-indigo-600 text-white shadow-md' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'}`}>
             {m.icon}
           </button>
         ))}
       </div>
 
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-2">
         {currentMode.startsWith('DRAW_') && (
-          <div className="flex items-center space-x-1.5 bg-zinc-950 p-1 rounded-lg border border-zinc-800 text-xs">
+          <div className="flex items-center space-x-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 text-xs">
             {structureTypes.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setType(t.id)}
-                className={`px-2 py-1 rounded transition-all flex items-center space-x-1.5 ${
-                  currentType === t.id ? 'bg-zinc-800 text-zinc-100 font-medium border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'
-                }`}
-              >
-                <span className={`w-2 h-2 rounded-full ${t.color}`} />
-                <span>{t.label}</span>
+              <button key={t.id} onClick={() => setType(t.id)} className={`px-2 py-1 rounded transition-all flex items-center space-x-1.5 ${currentType === t.id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                <span className={`w-2 h-2 rounded-full ${t.color}`} /><span>{t.label}</span>
               </button>
             ))}
           </div>
         )}
 
-        <div className="flex items-center space-x-2 bg-zinc-950 p-1 px-2 rounded-lg border border-zinc-800 text-xs">
+        <div className="flex items-center space-x-1 bg-zinc-950 p-1 px-2 rounded-lg border border-zinc-800 text-xs">
           <Ruler size={14} className="text-zinc-400" />
-          <select 
-            value={unit} 
-            onChange={(e) => setUnit(e.target.value)}
-            className="bg-transparent text-amber-400 font-bold outline-none cursor-pointer"
-          >
-            <option value="px">px</option>
-            <option value="mm">mm</option>
-            <option value="cm">cm</option>
-            <option value="m">m</option>
+          <select value={unit} onChange={(e) => setUnit(e.target.value)} className="bg-transparent text-amber-400 font-bold outline-none cursor-pointer">
+            <option value="px">px</option><option value="mm">mm</option><option value="cm">cm</option><option value="m">m</option>
           </select>
           <div className="w-px h-3 bg-zinc-700 mx-1"></div>
           <span className="text-zinc-500">1px=</span>
-          <input 
-            type="number" 
-            value={scaleRatio} 
-            onChange={(e) => setScaleRatio(Number(e.target.value) || 1)}
-            className="w-10 bg-zinc-800 text-zinc-200 px-1 py-0.5 rounded outline-none text-center appearance-none"
-          />
+          <input type="number" value={scaleRatio} onChange={(e) => setScaleRatio(Number(e.target.value) || 1)} className="w-8 bg-zinc-800 text-zinc-200 px-1 py-0.5 rounded outline-none text-center appearance-none"/>
         </div>
 
-        <button
-          onClick={() => setOrthoMode(!isOrthoMode)}
-          className={`flex items-center space-x-1 text-xs px-2 py-1.5 rounded-md border transition-all ${
-            isOrthoMode ? 'bg-amber-950/40 text-amber-400 border-amber-800/60' : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-300'
-          }`}
-        >
-          <span>Ortho</span>
-        </button>
-
-        <button
-          onClick={handleAutoCenterLine}
-          className="flex items-center space-x-1 text-xs bg-indigo-600 text-white px-2 py-1.5 rounded-md hover:bg-indigo-500 transition-all shadow-md active:scale-95"
-        >
-          <Sparkles size={14} />
-          <span>추출</span>
-        </button>
-
-        <div className="w-px h-5 bg-zinc-800"></div>
-
-        {/* ↩️ 취소하기 버튼 */}
-        <button
-          onClick={undoLine}
-          disabled={lines.length === 0}
-          className={`flex items-center space-x-1 text-xs px-2 py-1.5 rounded-md transition-colors ${
-            lines.length === 0 ? 'text-zinc-700 cursor-not-allowed' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
-          }`}
-          title="되돌리기 (Ctrl+Z)"
-        >
+        <button onClick={undoLine} disabled={lines.length === 0} className={`p-1.5 rounded-md transition-colors ${lines.length === 0 ? 'text-zinc-700' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'}`}>
           <Undo2 size={16} />
-          <span>취소</span>
         </button>
-        
-        <button
-          onClick={() => { if(confirm('모든 데이터를 초기화할까요?')) clearLines(); }}
-          className="text-xs text-zinc-500 hover:text-red-400 transition-colors pl-1"
-        >
-          비우기
+
+        <div className="w-px h-5 bg-zinc-800 mx-1"></div>
+
+        {/* 🗂️ 사이드바 토글 버튼 */}
+        <button onClick={toggleSidebar} className={`p-1.5 rounded-md transition-colors ${isSidebarOpen ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`} title="레이어 사이드바 열기/닫기">
+          <PanelRightOpen size={16} />
         </button>
       </div>
     </div>
