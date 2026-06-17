@@ -7,9 +7,17 @@ export const Workspace: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
 
-  const { currentMode } = useDrawingStore();
+  const { currentMode, lines } = useDrawingStore();
 
-  // 1. 캔버스 초기화 (도화지는 처음에 딱 한 번만 깝니다!)
+  // 🧹 툴바에서 '전체 비우기'를 눌렀을 때 캔버스 화면도 같이 지워지도록 연동
+  useEffect(() => {
+    if (fabricCanvasRef.current && lines.length === 0) {
+      fabricCanvasRef.current.clear();
+      fabricCanvasRef.current.backgroundColor = '#1e1e1e';
+      fabricCanvasRef.current.requestRenderAll();
+    }
+  }, [lines.length]);
+
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
     
@@ -38,6 +46,7 @@ export const Workspace: React.FC = () => {
 
     let isDrawing = false;
     let currentLine: fabric.Line | null = null;
+    let currentText: fabric.Text | null = null; // 📐 치수(길이)를 표시할 텍스트 변수 추가
 
     // 마우스 클릭 (그리기 시작)
     canvas.on('mouse:down', (opt) => {
@@ -47,37 +56,59 @@ export const Workspace: React.FC = () => {
       isDrawing = true;
       const pointer = canvas.getPointer(opt.e);
       
-      // 상태 창고에서 최신 부재 타입을 가져와 색상 지정
       const colorMap: Record<string, string> = {
         WALL: '#ef4444', COLUMN: '#3b82f6', BEAM: '#22c55e', CENTER_LINE: '#f59e0b'
       };
       const color = colorMap[state.currentType] || '#ffffff';
       
+      // 선 객체 생성
       currentLine = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
         strokeWidth: 4, fill: color, stroke: color, originX: 'center', originY: 'center',
         selectable: false, evented: false,
       });
       canvas.add(currentLine);
+
+      // 치수 텍스트 객체 생성 (배경을 어둡게 하여 글씨가 잘 보이게 함)
+      currentText = new fabric.Text('0 px', {
+        left: pointer.x, top: pointer.y - 15,
+        fontSize: 12, fill: '#e4e4e7', backgroundColor: 'rgba(0,0,0,0.7)',
+        originX: 'center', originY: 'center', fontFamily: 'monospace',
+        selectable: false, evented: false,
+      });
+      canvas.add(currentText);
     });
 
-    // 마우스 드래그 (선 긋기 및 직교 스냅)
+    // 마우스 드래그 (선 긋기 및 치수 실시간 렌더링)
     canvas.on('mouse:move', (opt) => {
-      if (!isDrawing || !currentLine) return;
+      if (!isDrawing || !currentLine || !currentText) return;
       const pointer = canvas.getPointer(opt.e);
       let endX = pointer.x;
       let endY = pointer.y;
 
-      // 직교 모드 실시간 체크
       if (opt.e.shiftKey || useDrawingStore.getState().isOrthoMode) {
         const startX = currentLine.x1!;
         const startY = currentLine.y1!;
         Math.abs(endX - startX) > Math.abs(endY - startY) ? endY = startY : endX = startX;
       }
+      
       currentLine.set({ x2: endX, y2: endY });
+
+      // 📐 피타고라스 정리로 두 점 사이의 실제 길이(px) 계산
+      const startX = currentLine.x1!;
+      const startY = currentLine.y1!;
+      const length = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+      
+      // 텍스트를 선의 정중앙에 위치시키고 길이 업데이트
+      currentText.set({
+        left: (startX + endX) / 2,
+        top: ((startY + endY) / 2) - 15, // 선 중앙에서 15px 위로
+        text: ` ${Math.round(length)} px ` // 정수로 깔끔하게 출력
+      });
+
       canvas.requestRenderAll();
     });
 
-    // 마우스 드롭 (그리기 종료 및 데이터 저장)
+    // 마우스 드롭 (그리기 종료)
     canvas.on('mouse:up', () => {
       if (!isDrawing || !currentLine) return;
       isDrawing = false;
@@ -88,7 +119,9 @@ export const Workspace: React.FC = () => {
         coordinates: [{ x: currentLine.x1!, y: currentLine.y1! }, { x: currentLine.x2!, y: currentLine.y2! }],
         thickness: 4,
       });
+      
       currentLine = null;
+      currentText = null;
     });
 
     const handleResize = () => {
@@ -101,9 +134,8 @@ export const Workspace: React.FC = () => {
       window.removeEventListener('resize', handleResize); 
       canvas.dispose(); 
     };
-  }, []); // <-- 핵심 수정 사항: 빈 배열을 넣어 렌더링 찌꺼기 방지
+  }, []); // 렌더링 찌꺼기 방지를 위한 빈 배열
 
-  // 2. '선택 모드' ↔ '그리기 모드' 전환 시 객체 선택 가능 여부만 업데이트
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
