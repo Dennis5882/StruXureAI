@@ -11,7 +11,6 @@ interface DrawingState {
   isOrthoMode: boolean;
   gridSize: number;
   
-  // 📏 단위 및 축척 상태 추가
   unit: string;
   scaleRatio: number;
 
@@ -22,7 +21,8 @@ interface DrawingState {
   setUnit: (unit: string) => void;
   setScaleRatio: (ratio: number) => void;
   
-  addLine: (line: Omit<StructureLineData, 'id'>) => void;
+  addLine: (line: Omit<StructureLineData, 'id'> | StructureLineData) => void;
+  undoLine: () => void; // ↩️ 취소 기능 추가
   updateLine: (id: string, updatedData: Partial<StructureLineData>) => void;
   deleteLine: (id: string) => void;
   setSelectedLineId: (id: string | null) => void;
@@ -43,8 +43,8 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   isOrthoMode: false,
   gridSize: 0,
   
-  unit: 'mm', // 기본 단위
-  scaleRatio: 10, // 기본 축척 (1px = 10mm)
+  unit: 'mm',
+  scaleRatio: 10,
 
   setMode: (mode) => set({ currentMode: mode, selectedLineId: mode !== 'SELECT' ? null : undefined }),
   setType: (type) => set({ currentType: type }),
@@ -54,11 +54,17 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   setScaleRatio: (scaleRatio) => set({ scaleRatio }),
 
   addLine: (line) => set((state) => {
-    const newLine: StructureLineData = {
+    const newLine = {
       ...line,
-      id: `str_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-    };
+      id: ('id' in line) ? line.id : `str_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+    } as StructureLineData;
     return { lines: [...state.lines, newLine] };
+  }),
+
+  // ↩️ 가장 최근에 추가된 도형/선을 배열에서 제거
+  undoLine: () => set((state) => {
+    if (state.lines.length === 0) return state;
+    return { lines: state.lines.slice(0, -1) };
   }),
 
   updateLine: (id, updatedData) => set((state) => ({

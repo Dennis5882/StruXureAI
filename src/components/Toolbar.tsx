@@ -1,5 +1,5 @@
 import React from 'react';
-import { MousePointer, PenTool, Square, Trash2, ToggleLeft, ToggleRight, Sparkles, Layers, Ruler } from 'lucide-react';
+import { MousePointer, PenTool, Square, Circle, Triangle, Trash2, ToggleLeft, ToggleRight, Sparkles, Layers, Ruler, Undo2 } from 'lucide-react';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { DrawingMode, StructureType } from '../types/drawing';
 import { extractCenterLinesFromWalls } from '../utils/geometry';
@@ -7,14 +7,16 @@ import { extractCenterLinesFromWalls } from '../utils/geometry';
 export const Toolbar: React.FC = () => {
   const { 
     currentMode, currentType, isOrthoMode, lines, unit, scaleRatio,
-    setMode, setType, setOrthoMode, clearLines, setUnit, setScaleRatio 
+    setMode, setType, setOrthoMode, clearLines, setUnit, setScaleRatio, undoLine 
   } = useDrawingStore();
 
+  // 🪄 도형 그리기 모드 추가
   const modes: { id: DrawingMode; label: string; icon: React.ReactNode }[] = [
     { id: 'SELECT', label: '선택 및 이동', icon: <MousePointer size={18} /> },
     { id: 'DRAW_LINE', label: '선 그리기', icon: <PenTool size={18} /> },
     { id: 'DRAW_RECT', label: '사각형 그리기', icon: <Square size={18} /> },
-    { id: 'DELETE', label: '삭제 모드', icon: <Trash2 size={18} /> },
+    { id: 'DRAW_CIRCLE', label: '원 그리기', icon: <Circle size={18} /> },
+    { id: 'DRAW_TRIANGLE', label: '삼각형 그리기', icon: <Triangle size={18} /> },
   ];
 
   const structureTypes: { id: StructureType; label: string; color: string }[] = [
@@ -32,7 +34,6 @@ export const Toolbar: React.FC = () => {
     }
     const store = useDrawingStore.getState();
     useDrawingStore.setState({ lines: [...store.lines, ...generated] });
-    alert(`성공적으로 ${generated.length}개의 중심선을 자동 생성했습니다!`);
   };
 
   return (
@@ -58,7 +59,7 @@ export const Toolbar: React.FC = () => {
       </div>
 
       <div className="flex items-center space-x-3">
-        {(currentMode === 'DRAW_LINE' || currentMode === 'DRAW_RECT') && (
+        {currentMode.startsWith('DRAW_') && (
           <div className="flex items-center space-x-1.5 bg-zinc-950 p-1 rounded-lg border border-zinc-800 text-xs">
             {structureTypes.map((t) => (
               <button
@@ -75,7 +76,6 @@ export const Toolbar: React.FC = () => {
           </div>
         )}
 
-        {/* 📐 단위 및 축척 설정기 UI 추가 */}
         <div className="flex items-center space-x-2 bg-zinc-950 p-1 px-2 rounded-lg border border-zinc-800 text-xs">
           <Ruler size={14} className="text-zinc-400" />
           <select 
@@ -89,37 +89,50 @@ export const Toolbar: React.FC = () => {
             <option value="m">m</option>
           </select>
           <div className="w-px h-3 bg-zinc-700 mx-1"></div>
-          <span className="text-zinc-500">1px =</span>
+          <span className="text-zinc-500">1px=</span>
           <input 
             type="number" 
             value={scaleRatio} 
             onChange={(e) => setScaleRatio(Number(e.target.value) || 1)}
-            className="w-12 bg-zinc-800 text-zinc-200 px-1 py-0.5 rounded outline-none text-center appearance-none"
+            className="w-10 bg-zinc-800 text-zinc-200 px-1 py-0.5 rounded outline-none text-center appearance-none"
           />
-          <span className="text-zinc-500">{unit}</span>
         </div>
 
         <button
           onClick={() => setOrthoMode(!isOrthoMode)}
-          className={`flex items-center space-x-1.5 text-xs px-2.5 py-1.5 rounded-md border transition-all ${
+          className={`flex items-center space-x-1 text-xs px-2 py-1.5 rounded-md border transition-all ${
             isOrthoMode ? 'bg-amber-950/40 text-amber-400 border-amber-800/60' : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-300'
           }`}
         >
           <span>Ortho</span>
-          {isOrthoMode ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
         </button>
 
         <button
           onClick={handleAutoCenterLine}
-          className="flex items-center space-x-1.5 text-xs bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-3 py-1.5 rounded-md font-medium hover:from-indigo-500 hover:to-purple-500 transition-all shadow-md active:scale-95"
+          className="flex items-center space-x-1 text-xs bg-indigo-600 text-white px-2 py-1.5 rounded-md hover:bg-indigo-500 transition-all shadow-md active:scale-95"
         >
           <Sparkles size={14} />
-          <span>중심선 추출</span>
+          <span>추출</span>
+        </button>
+
+        <div className="w-px h-5 bg-zinc-800"></div>
+
+        {/* ↩️ 취소하기 버튼 */}
+        <button
+          onClick={undoLine}
+          disabled={lines.length === 0}
+          className={`flex items-center space-x-1 text-xs px-2 py-1.5 rounded-md transition-colors ${
+            lines.length === 0 ? 'text-zinc-700 cursor-not-allowed' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+          }`}
+          title="되돌리기 (Ctrl+Z)"
+        >
+          <Undo2 size={16} />
+          <span>취소</span>
         </button>
         
         <button
-          onClick={() => { if(confirm('그려진 모든 구조 라인 데이터를 초기화하시겠습니까?')) clearLines(); }}
-          className="text-xs text-zinc-500 hover:text-red-400 transition-colors pl-2 border-l border-zinc-800"
+          onClick={() => { if(confirm('모든 데이터를 초기화할까요?')) clearLines(); }}
+          className="text-xs text-zinc-500 hover:text-red-400 transition-colors pl-1"
         >
           비우기
         </button>
