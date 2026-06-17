@@ -1,11 +1,14 @@
 import React from 'react';
-import { MousePointer, PenTool, Square, Trash2, ToggleLeft, ToggleRight, Sparkles, Layers } from 'lucide-react';
+import { MousePointer, PenTool, Square, Trash2, ToggleLeft, ToggleRight, Sparkles, Layers, Ruler } from 'lucide-react';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { DrawingMode, StructureType } from '../types/drawing';
 import { extractCenterLinesFromWalls } from '../utils/geometry';
 
 export const Toolbar: React.FC = () => {
-  const { currentMode, currentType, isOrthoMode, lines, setMode, setType, setOrthoMode, clearLines } = useDrawingStore();
+  const { 
+    currentMode, currentType, isOrthoMode, lines, unit, scaleRatio,
+    setMode, setType, setOrthoMode, clearLines, setUnit, setScaleRatio 
+  } = useDrawingStore();
 
   const modes: { id: DrawingMode; label: string; icon: React.ReactNode }[] = [
     { id: 'SELECT', label: '선택 및 이동', icon: <MousePointer size={18} /> },
@@ -37,7 +40,6 @@ export const Toolbar: React.FC = () => {
       <div className="flex items-center space-x-2">
         <Layers className="text-indigo-500 w-5 h-5" />
         <span className="text-zinc-100 font-bold text-sm tracking-wider">StruXureAI</span>
-        <span className="text-xs bg-indigo-950 text-indigo-400 px-2 py-0.5 rounded border border-indigo-800/50">Phase 1</span>
       </div>
 
       <div className="flex items-center bg-zinc-950 p-1 rounded-lg border border-zinc-800">
@@ -55,14 +57,14 @@ export const Toolbar: React.FC = () => {
         ))}
       </div>
 
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-3">
         {(currentMode === 'DRAW_LINE' || currentMode === 'DRAW_RECT') && (
           <div className="flex items-center space-x-1.5 bg-zinc-950 p-1 rounded-lg border border-zinc-800 text-xs">
             {structureTypes.map((t) => (
               <button
                 key={t.id}
                 onClick={() => setType(t.id)}
-                className={`px-2.5 py-1 rounded transition-all flex items-center space-x-1.5 ${
+                className={`px-2 py-1 rounded transition-all flex items-center space-x-1.5 ${
                   currentType === t.id ? 'bg-zinc-800 text-zinc-100 font-medium border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
@@ -73,13 +75,37 @@ export const Toolbar: React.FC = () => {
           </div>
         )}
 
+        {/* 📐 단위 및 축척 설정기 UI 추가 */}
+        <div className="flex items-center space-x-2 bg-zinc-950 p-1 px-2 rounded-lg border border-zinc-800 text-xs">
+          <Ruler size={14} className="text-zinc-400" />
+          <select 
+            value={unit} 
+            onChange={(e) => setUnit(e.target.value)}
+            className="bg-transparent text-amber-400 font-bold outline-none cursor-pointer"
+          >
+            <option value="px">px</option>
+            <option value="mm">mm</option>
+            <option value="cm">cm</option>
+            <option value="m">m</option>
+          </select>
+          <div className="w-px h-3 bg-zinc-700 mx-1"></div>
+          <span className="text-zinc-500">1px =</span>
+          <input 
+            type="number" 
+            value={scaleRatio} 
+            onChange={(e) => setScaleRatio(Number(e.target.value) || 1)}
+            className="w-12 bg-zinc-800 text-zinc-200 px-1 py-0.5 rounded outline-none text-center appearance-none"
+          />
+          <span className="text-zinc-500">{unit}</span>
+        </div>
+
         <button
           onClick={() => setOrthoMode(!isOrthoMode)}
           className={`flex items-center space-x-1.5 text-xs px-2.5 py-1.5 rounded-md border transition-all ${
             isOrthoMode ? 'bg-amber-950/40 text-amber-400 border-amber-800/60' : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-300'
           }`}
         >
-          <span>직교 가이드 (Ortho)</span>
+          <span>Ortho</span>
           {isOrthoMode ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
         </button>
 
@@ -88,14 +114,14 @@ export const Toolbar: React.FC = () => {
           className="flex items-center space-x-1.5 text-xs bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-3 py-1.5 rounded-md font-medium hover:from-indigo-500 hover:to-purple-500 transition-all shadow-md active:scale-95"
         >
           <Sparkles size={14} />
-          <span>중심선 자동 생성</span>
+          <span>중심선 추출</span>
         </button>
-
+        
         <button
           onClick={() => { if(confirm('그려진 모든 구조 라인 데이터를 초기화하시겠습니까?')) clearLines(); }}
           className="text-xs text-zinc-500 hover:text-red-400 transition-colors pl-2 border-l border-zinc-800"
         >
-          전체 비우기
+          비우기
         </button>
       </div>
     </div>
