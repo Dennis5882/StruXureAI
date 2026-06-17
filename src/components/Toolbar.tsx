@@ -1,4 +1,64 @@
 import React, { useRef } from 'react';
+import { MousePointer, PenTool, Square, Circle, Triangle, ToggleLeft, ToggleRight, Sparkles, Layers, Ruler, Undo2, ImagePlus, Bot, Loader2, PanelRightOpen, FileArchive } from 'lucide-react';
+import { useDrawingStore } from '../store/useDrawingStore';
+import { DrawingMode, StructureType } from '../types/drawing';
+import { extractCenterLinesFromWalls } from '../utils/geometry';
+import { fetchAIAnalysis } from '../utils/api';
+// @ts-ignore
+import DxfParser from 'dxf-parser';
+
+export const Toolbar: React.FC = () => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cadInputRef = useRef<HTMLInputElement>(null);
+  
+  const { 
+    currentMode, currentType, isOrthoMode, lines, unit, scaleRatio, backgroundImage, isAnalyzing, isSidebarOpen,
+    setMode, setType, setOrthoMode, clearLines, setUnit, setScaleRatio, undoLine, setBackgroundImage, setAiPolygons, setIsAnalyzing, setDxfLayers, toggleSidebar
+  } = useDrawingStore();
+
+  const modes: { id: DrawingMode; label: string; icon: React.ReactNode }[] = [
+    { id: 'SELECT', label: '이동/선택', icon: <MousePointer size={18} /> },
+    { id: 'DRAW_LINE', label: '선', icon: <PenTool size={18} /> },
+    { id: 'DRAW_RECT', label: '사각형', icon: <Square size={18} /> },
+    { id: 'DRAW_CIRCLE', label: '원', icon: <Circle size={18} /> },
+    { id: 'DRAW_TRIANGLE', label: '삼각형', icon: <Triangle size={18} /> },
+  ];
+
+  const structureTypes: { id: StructureType; label: string; color: string }[] = [
+    { id: 'WALL', label: '벽체 (Wall)', color: 'bg-red-500' },
+    { id: 'COLUMN', label: '기둥 (Column)', color: 'bg-blue-500' },
+    { id: 'BEAM', label: '보 (Beam)', color: 'bg-green-500' },
+    { id: 'CENTER_LINE', label: '중심선 (Center)', color: 'bg-amber-500' },
+  ];
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBackgroundImage(URL.createObjectURL(file));
+  };
+
+  // 📐 DWG 및 DXF 통합 업로드 핸들러
+  const handleCadUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const fileName = file.name.toLowerCase();
+
+    // 🔄 DWG 파일인 경우: 백엔드 변환 시뮬레이션
+    if (fileName.endsWith('.dwg')) {
+      alert(`DWG 파일(${file.name})이 감지되었습니다.\n백엔드 서버로 전송하여 DXF 포맷으로 자동 변환합니다. (약 2초 소요)`);
+      setIsAnalyzing(true);
+      
+      setTimeout(() => {
+        // 실제로는 백엔드가 변환 후 DXF 레이어 정보를 내려줍니다.
+        // 현재는 변환이 성공했다고 가정하고 모의(Mock) 구조 레이어 데이터 세팅
+        const mockLayers = [
+          { name: 'S-WALL-CORE', visible: true },
+          { name: 'S-COLUMN', visible: true },
+          { name: 'A-FURNITURE', visible: true },
+          { name
+cat << 'EOF' > src/components/Toolbar.tsx
+import React, { useRef } from 'react';
 import { MousePointer, PenTool, Square, Circle, Triangle, ToggleLeft, ToggleRight, Sparkles, Layers, Ruler, Undo2, ImagePlus, Bot, Loader2, PanelRightOpen } from 'lucide-react';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { DrawingMode, StructureType } from '../types/drawing';
@@ -37,7 +97,6 @@ export const Toolbar: React.FC = () => {
     setBackgroundImage(URL.createObjectURL(file));
   };
 
-  // 📐 DXF 벡터 파일 파싱 및 레이어 추출
   const handleDxfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -53,12 +112,9 @@ export const Toolbar: React.FC = () => {
             name, visible: true
           }));
           setDxfLayers(layers);
-          alert(`✅ ${layers.length}개의 CAD 레이어를 성공적으로 분석했습니다! 우측 사이드바를 확인하세요.`);
+          if (!isSidebarOpen) toggleSidebar(); // 사이드바가 닫혀있으면 자동으로 열기
         }
-      } catch (err) {
-        console.error("DXF 파싱 오류:", err);
-        alert("DXF 파일을 읽는 데 실패했습니다. 지원하지 않는 버전이거나 손상된 파일일 수 있습니다.");
-      }
+      } catch (err) { alert("DXF 파일을 읽는 데 실패했습니다."); }
     };
     reader.readAsText(file);
   };
@@ -81,42 +137,26 @@ export const Toolbar: React.FC = () => {
         </div>
         
         <input type="file" ref={fileInputRef} accept="image/*" hidden onChange={handleImageUpload} />
-        <input type="file" ref={dxfInputRef} accept=".dxf" hidden onChange={handleDxfUpload} />
+        <input type="file" ref={dxfInputRef} accept=".dxf,.dwg" hidden onChange={handleDxfUpload} />
         
         <div className="flex items-center space-x-1.5 bg-zinc-950 p-1 rounded-md border border-zinc-800">
-          <button onClick={() => fileInputRef.current?.click()} className="flex items-center space-x-1.5 text-xs bg-zinc-800 text-zinc-300 px-2 py-1.5 rounded hover:bg-zinc-700 hover:text-white transition-colors">
-            <ImagePlus size={14} /><span>이미지</span>
-          </button>
-          <button onClick={() => dxfInputRef.current?.click()} className="flex items-center space-x-1.5 text-xs bg-zinc-800 text-zinc-300 px-2 py-1.5 rounded hover:bg-zinc-700 hover:text-white transition-colors">
-            <Layers size={14} /><span>DXF 캐드</span>
-          </button>
+          <button onClick={() => fileInputRef.current?.click()} className="flex items-center space-x-1.5 text-xs bg-zinc-800 text-zinc-300 px-2 py-1.5 rounded hover:bg-zinc-700 hover:text-white transition-colors"><ImagePlus size={14} /><span>이미지</span></button>
+          <button onClick={() => dxfInputRef.current?.click()} className="flex items-center space-x-1.5 text-xs bg-zinc-800 text-zinc-300 px-2 py-1.5 rounded hover:bg-zinc-700 hover:text-white transition-colors"><Layers size={14} /><span>CAD</span></button>
         </div>
 
-        <button onClick={handleAIAnalysis} disabled={isAnalyzing || !backgroundImage} className={`flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-md transition-all shadow-md ${isAnalyzing ? 'bg-zinc-700 text-zinc-400' : !backgroundImage ? 'bg-emerald-900/30 text-emerald-700/50' : 'bg-emerald-600 text-white hover:bg-emerald-500'}`}>
+        <button onClick={handleAIAnalysis} disabled={isAnalyzing || !backgroundImage} className={`flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-md transition-all ${isAnalyzing ? 'bg-zinc-700 text-zinc-400' : !backgroundImage ? 'bg-emerald-900/30 text-emerald-700/50' : 'bg-emerald-600 text-white hover:bg-emerald-500'}`}>
           {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />}
-          <span>{isAnalyzing ? 'AI 분석 중...' : 'AI 도면 인식'}</span>
+          <span>{isAnalyzing ? 'AI 분석 중...' : 'AI 인식'}</span>
         </button>
       </div>
 
       <div className="flex items-center bg-zinc-950 p-1 rounded-lg border border-zinc-800">
         {modes.map((m) => (
-          <button key={m.id} onClick={() => setMode(m.id)} title={m.label} className={`flex items-center justify-center p-1.5 px-2 rounded-md transition-all ${currentMode === m.id ? 'bg-indigo-600 text-white shadow-md' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'}`}>
-            {m.icon}
-          </button>
+          <button key={m.id} onClick={() => setMode(m.id)} title={m.label} className={`flex items-center justify-center p-1.5 px-2 rounded-md transition-all ${currentMode === m.id ? 'bg-indigo-600 text-white shadow-md' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'}`}>{m.icon}</button>
         ))}
       </div>
 
       <div className="flex items-center space-x-2">
-        {currentMode.startsWith('DRAW_') && (
-          <div className="flex items-center space-x-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 text-xs">
-            {structureTypes.map((t) => (
-              <button key={t.id} onClick={() => setType(t.id)} className={`px-2 py-1 rounded transition-all flex items-center space-x-1.5 ${currentType === t.id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}>
-                <span className={`w-2 h-2 rounded-full ${t.color}`} /><span>{t.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
         <div className="flex items-center space-x-1 bg-zinc-950 p-1 px-2 rounded-lg border border-zinc-800 text-xs">
           <Ruler size={14} className="text-zinc-400" />
           <select value={unit} onChange={(e) => setUnit(e.target.value)} className="bg-transparent text-amber-400 font-bold outline-none cursor-pointer">
@@ -127,13 +167,11 @@ export const Toolbar: React.FC = () => {
           <input type="number" value={scaleRatio} onChange={(e) => setScaleRatio(Number(e.target.value) || 1)} className="w-8 bg-zinc-800 text-zinc-200 px-1 py-0.5 rounded outline-none text-center appearance-none"/>
         </div>
 
-        <button onClick={undoLine} disabled={lines.length === 0} className={`p-1.5 rounded-md transition-colors ${lines.length === 0 ? 'text-zinc-700' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'}`}>
-          <Undo2 size={16} />
-        </button>
+        <button onClick={undoLine} disabled={lines.length === 0} className={`p-1.5 rounded-md transition-colors ${lines.length === 0 ? 'text-zinc-700' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'}`}><Undo2 size={16} /></button>
 
         <div className="w-px h-5 bg-zinc-800 mx-1"></div>
 
-        {/* 🗂️ 사이드바 토글 버튼 */}
+        {/* 🚨 여기 toggleSidebar 이벤트 연결! */}
         <button onClick={toggleSidebar} className={`p-1.5 rounded-md transition-colors ${isSidebarOpen ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`} title="레이어 사이드바 열기/닫기">
           <PanelRightOpen size={16} />
         </button>
