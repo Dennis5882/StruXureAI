@@ -1,11 +1,14 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as fabric from 'fabric';
 import { useDrawingStore } from '../store/useDrawingStore';
+import { loadFiles } from '../utils/fileLoader';
 
 export const Workspace: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
+  const dragCounter = useRef(0);
+  const [isDragging, setIsDragging] = useState(false);
 
   const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale } = useDrawingStore();
 
@@ -329,12 +332,56 @@ export const Workspace: React.FC = () => {
     canvas.requestRenderAll();
   }, [currentMode]);
 
+  // 🖱️ 드래그앤드롭 파일 업로드 (이미지/CAD)
+  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files');
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragCounter.current += 1;
+    setIsDragging(true);
+  };
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragCounter.current -= 1;
+    if (dragCounter.current <= 0) { dragCounter.current = 0; setIsDragging(false); }
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setIsDragging(false);
+    if (e.dataTransfer.files?.length) loadFiles(e.dataTransfer.files);
+  };
+
   return (
-    <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-zinc-900">
+    <div
+      ref={containerRef}
+      className="w-full h-full relative overflow-hidden bg-zinc-900"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div className="absolute bottom-4 left-4 z-10 bg-black/70 text-zinc-300 text-xs px-3 py-1.5 rounded pointer-events-none font-mono">
         {currentMode === 'SELECT' && "💡 [Alt + 드래그] 뷰포트 이동 | [마우스 휠] 줌 인/아웃"}
         {currentMode !== 'SELECT' && "✏️ 도형 및 선 그리기 모드. Ctrl+Z 를 눌러 실행을 취소할 수 있습니다."}
       </div>
+      {/* 🖱️ 드래그앤드롭 오버레이 */}
+      {isDragging && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-indigo-950/70 backdrop-blur-sm pointer-events-none">
+          <div className="flex flex-col items-center space-y-3 border-2 border-dashed border-indigo-400 rounded-2xl px-12 py-10 bg-indigo-900/40">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#a5b4fc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <div className="text-indigo-100 font-bold text-sm">여기에 파일을 놓으세요</div>
+            <div className="text-indigo-300/70 text-xs">이미지 (PNG/JPG 등) 또는 CAD (DXF/DWG)</div>
+          </div>
+        </div>
+      )}
       {/* 🏷️ 버전 정보 (빌드 시 자동 주입) */}
       <div className="absolute bottom-4 right-4 z-10 bg-black/60 text-zinc-500 text-[10px] px-2.5 py-1 rounded pointer-events-none font-mono leading-tight text-right">
         <div>StruXureAI <span className="text-zinc-300">v{__APP_VERSION__}</span> · by {__APP_DEVELOPER__}</div>

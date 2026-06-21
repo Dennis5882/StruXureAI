@@ -4,16 +4,15 @@ import { useDrawingStore } from '../store/useDrawingStore';
 import { DrawingMode, StructureType } from '../types/drawing';
 import { extractCenterLinesFromWalls } from '../utils/geometry';
 import { fetchAIAnalysis } from '../utils/api';
-// @ts-ignore
-import DxfParser from 'dxf-parser';
+import { loadFile } from '../utils/fileLoader';
 
 export const Toolbar: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dxfInputRef = useRef<HTMLInputElement>(null);
   
   const { 
-    currentMode, currentType, isOrthoMode, lines, unit, scaleRatio, backgroundImage, isAnalyzing, isSidebarOpen,
-    setMode, setType, setOrthoMode, clearLines, setUnit, setScaleRatio, undoLine, setBackgroundImage, setAiPolygons, setIsAnalyzing, setDxfLayers, setDxfEntities, toggleSidebar
+    currentMode, currentType, lines, unit, scaleRatio, backgroundImage, isAnalyzing, isSidebarOpen,
+    setMode, setType, setUnit, setScaleRatio, undoLine, setAiPolygons, setIsAnalyzing, toggleSidebar
   } = useDrawingStore();
 
   const modes: { id: DrawingMode; label: string; icon: React.ReactNode }[] = [
@@ -33,51 +32,14 @@ export const Toolbar: React.FC = () => {
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    setBackgroundImage(URL.createObjectURL(file));
+    if (file) loadFile(file);
+    e.target.value = ''; // 같은 파일 재선택 가능하도록 초기화
   };
 
   const handleDxfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const parser = new DxfParser();
-        const dxf = parser.parseSync(evt.target?.result as string);
-        if (!dxf) throw new Error('빈 DXF');
-
-        // AutoCAD Color Index → HEX 변환 (자주 쓰이는 색만 매핑, 그 외는 흰색)
-        const aciToHex: Record<number, string> = {
-          1: '#ff0000', 2: '#ffff00', 3: '#00ff00', 4: '#00ffff',
-          5: '#0000ff', 6: '#ff00ff', 7: '#ffffff', 8: '#808080', 9: '#c0c0c0',
-        };
-
-        // 레이어 테이블에서 레이어 이름 + 색상 추출
-        const layerTable = dxf.tables?.layer?.layers ?? {};
-        const layers = Object.keys(layerTable).map((name) => ({
-          name,
-          visible: true,
-          color: aciToHex[layerTable[name].color] || '#d4d4d8',
-        }));
-
-        // 엔티티가 참조하는 레이어 중 테이블에 없는 것도 보강
-        const entities = Array.isArray(dxf.entities) ? dxf.entities : [];
-        const known = new Set(layers.map((l) => l.name));
-        entities.forEach((e: any) => {
-          if (e.layer && !known.has(e.layer)) {
-            known.add(e.layer);
-            layers.push({ name: e.layer, visible: true, color: '#d4d4d8' });
-          }
-        });
-
-        setDxfLayers(layers);
-        setDxfEntities(entities);
-        if (!isSidebarOpen) toggleSidebar(); // 사이드바가 닫혀있으면 자동으로 열기
-      } catch (err) { alert("DXF 파일을 읽는 데 실패했습니다."); }
-    };
-    reader.readAsText(file);
+    if (file) loadFile(file);
+    e.target.value = '';
   };
 
   const handleAIAnalysis = async () => {
