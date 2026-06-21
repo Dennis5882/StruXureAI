@@ -118,6 +118,17 @@ export const Toolbar: React.FC = () => {
       </div>
 
       <div className="flex items-center space-x-2">
+        {/* 🧱 부재 선택 메뉴 (그리기 모드에서만 표시) — 벽체/기둥/보/중심선 */}
+        {currentMode.startsWith('DRAW_') && (
+          <div className="flex items-center space-x-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 text-xs">
+            {structureTypes.map((t) => (
+              <button key={t.id} onClick={() => setType(t.id)} className={`px-2 py-1 rounded transition-all flex items-center space-x-1.5 ${currentType === t.id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                <span className={`w-2 h-2 rounded-full ${t.color}`} /><span>{t.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center space-x-1 bg-zinc-950 p-1 px-2 rounded-lg border border-zinc-800 text-xs">
           <Ruler size={14} className="text-zinc-400" />
           <select value={unit} onChange={(e) => setUnit(e.target.value)} className="bg-transparent text-amber-400 font-bold outline-none cursor-pointer">
