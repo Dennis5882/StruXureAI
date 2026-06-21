@@ -2,6 +2,17 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as fabric from 'fabric';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { loadFiles } from '../utils/fileLoader';
+import { Point2D } from '../types/drawing';
+
+// 점 p에서 선분 a-b 까지의 최단 거리
+const distToSegment = (p: Point2D, a: Point2D, b: Point2D): number => {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+};
 
 export const Workspace: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -40,6 +51,28 @@ export const Workspace: React.FC = () => {
           hasChanged = true;
         }
       }
+    });
+
+    // 스토어에는 있으나 캔버스 객체가 없는 선을 생성 (프로그램 생성 중심선 등)
+    const existingIds = new Set(
+      canvas.getObjects()
+        .map((o: any) => o.id)
+        .filter(Boolean)
+        .map((id: string) => id.replace('_text', ''))
+    );
+    const colorMap: Record<string, string> = { WALL: '#ef4444', COLUMN: '#3b82f6', BEAM: '#22c55e', CENTER_LINE: '#f59e0b' };
+    lines.forEach((line) => {
+      if (existingIds.has(line.id) || line.coordinates.length < 2) return;
+      const [a, b] = line.coordinates;
+      const obj = new fabric.Line([a.x, a.y, b.x, b.y], {
+        stroke: colorMap[line.type] || '#ffffff',
+        strokeWidth: line.thickness || 2,
+        selectable: false, evented: false,
+        originX: 'center', originY: 'center',
+      });
+      (obj as any).id = line.id;
+      canvas.add(obj);
+      hasChanged = true;
     });
 
     if (hasChanged) canvas.requestRenderAll();
@@ -199,12 +232,44 @@ export const Workspace: React.FC = () => {
     let startX = 0;
     let startY = 0;
     let objId = '';
+    // 🖐️ 팬(Pan) 상태
+    let isPanning = false;
+    let lastPosX = 0;
+    let lastPosY = 0;
 
     canvas.on('mouse:down', (opt) => {
       const state = useDrawingStore.getState();
       const mode = state.currentMode;
+
+      // 🖐️ Alt + 드래그 → 뷰포트 이동 (모든 모드 공통)
+      if (opt.e.altKey) {
+        isPanning = true;
+        lastPosX = opt.e.clientX;
+        lastPosY = opt.e.clientY;
+        canvas.setCursor('grabbing');
+        return;
+      }
+
+      // 🧽 삭제 모드 → 클릭한 객체 제거
+      if (mode === 'DELETE') {
+        // 1순위: fabric이 잡은 타깃(면적 있는 도형에 유리)
+        const target = opt.target as any;
+        if (target && target.id) { state.deleteLine(String(target.id).replace('_text', '')); return; }
+        // 2순위: 가장 가까운 선분 직접 탐색(얇은 선에 안정적)
+        const p = canvas.getPointer(opt.e);
+        let bestId: string | null = null;
+        let best = Infinity;
+        for (const ln of state.lines) {
+          if (ln.coordinates.length < 2) continue;
+          const d = distToSegment(p, ln.coordinates[0], ln.coordinates[1]);
+          if (d < best) { best = d; bestId = ln.id; }
+        }
+        if (bestId && best <= 10 / canvas.getZoom()) state.deleteLine(bestId);
+        return;
+      }
+
       if (!mode.startsWith('DRAW_')) return;
-      
+
       isDrawing = true;
       const pointer = canvas.getPointer(opt.e);
       startX = pointer.x;
@@ -241,6 +306,20 @@ export const Workspace: React.FC = () => {
     });
 
     canvas.on('mouse:move', (opt) => {
+      // 🖐️ 팬 처리
+      if (isPanning) {
+        const e = opt.e;
+        const vpt = canvas.viewportTransform;
+        if (vpt) {
+          vpt[4] += e.clientX - lastPosX;
+          vpt[5] += e.clientY - lastPosY;
+          canvas.requestRenderAll();
+        }
+        lastPosX = e.clientX;
+        lastPosY = e.clientY;
+        return;
+      }
+
       if (!isDrawing || !currentShape || !currentText) return;
       const state = useDrawingStore.getState();
       const pointer = canvas.getPointer(opt.e);
@@ -288,6 +367,13 @@ export const Workspace: React.FC = () => {
     });
 
     canvas.on('mouse:up', (opt) => {
+      // 🖐️ 팬 종료 (뷰포트 변환 확정)
+      if (isPanning) {
+        isPanning = false;
+        canvas.setViewportTransform(canvas.viewportTransform);
+        return;
+      }
+
       if (!isDrawing || !currentShape) return;
       isDrawing = false;
       const state = useDrawingStore.getState();
@@ -324,6 +410,13 @@ export const Workspace: React.FC = () => {
         // DXF 도면/AI 오버레이는 배경 참조용이므로 선택 불가 유지
         if (obj.isDxf || obj.isAi) return;
         obj.selectable = true; obj.evented = true;
+      });
+    } else if (currentMode === 'DELETE') {
+      // 🧽 삭제 모드: 선택은 막되 클릭은 감지되도록 evented만 켠다 (배경 제외)
+      canvas.selection = false;
+      canvas.forEachObject((obj: any) => {
+        obj.selectable = false;
+        obj.evented = !(obj.isDxf || obj.isAi);
       });
     } else {
       canvas.selection = false;
@@ -370,7 +463,8 @@ export const Workspace: React.FC = () => {
     >
       <div className="absolute bottom-4 left-4 z-10 bg-black/70 text-zinc-300 text-xs px-3 py-1.5 rounded pointer-events-none font-mono">
         {currentMode === 'SELECT' && "💡 [Alt + 드래그] 뷰포트 이동 | [마우스 휠] 줌 인/아웃"}
-        {currentMode !== 'SELECT' && "✏️ 도형 및 선 그리기 모드. Ctrl+Z 를 눌러 실행을 취소할 수 있습니다."}
+        {currentMode === 'DELETE' && "🧽 삭제 모드: 지울 객체를 클릭하세요. [Alt + 드래그] 이동 | [휠] 줌"}
+        {currentMode !== 'SELECT' && currentMode !== 'DELETE' && "✏️ 도형 및 선 그리기 모드. Ctrl+Z 실행취소 | [Alt + 드래그] 이동 | [휠] 줌"}
       </div>
       {/* 🖱️ 드래그앤드롭 오버레이 */}
       {isDragging && (

@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { MousePointer, PenTool, Square, Circle, Triangle, ToggleLeft, ToggleRight, Sparkles, Layers, Ruler, Undo2, ImagePlus, Bot, Loader2, PanelRightOpen } from 'lucide-react';
+import { MousePointer, PenTool, Square, Circle, Triangle, Eraser, Sparkles, Layers, Ruler, Undo2, ImagePlus, Bot, Loader2, PanelRightOpen } from 'lucide-react';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { DrawingMode, StructureType } from '../types/drawing';
 import { extractCenterLinesFromWalls } from '../utils/geometry';
@@ -12,8 +12,18 @@ export const Toolbar: React.FC = () => {
   
   const { 
     currentMode, currentType, lines, unit, scaleRatio, backgroundImage, isAnalyzing, isSidebarOpen,
-    setMode, setType, setUnit, setScaleRatio, undoLine, setAiPolygons, setIsAnalyzing, toggleSidebar
+    setMode, setType, setUnit, setScaleRatio, undoLine, addLine, setAiPolygons, setIsAnalyzing, toggleSidebar
   } = useDrawingStore();
+
+  // 🪄 벽체 쌍에서 중심선 자동 생성
+  const handleGenerateCenterLines = () => {
+    const centers = extractCenterLinesFromWalls(lines);
+    if (centers.length === 0) {
+      alert('중심선을 생성할 벽체(WALL) 쌍을 찾지 못했습니다. 마주보는 벽 두 개를 먼저 그려주세요.');
+      return;
+    }
+    centers.forEach((c) => addLine(c));
+  };
 
   const modes: { id: DrawingMode; label: string; icon: React.ReactNode }[] = [
     { id: 'SELECT', label: '이동/선택', icon: <MousePointer size={18} /> },
@@ -21,6 +31,7 @@ export const Toolbar: React.FC = () => {
     { id: 'DRAW_RECT', label: '사각형', icon: <Square size={18} /> },
     { id: 'DRAW_CIRCLE', label: '원', icon: <Circle size={18} /> },
     { id: 'DRAW_TRIANGLE', label: '삼각형', icon: <Triangle size={18} /> },
+    { id: 'DELETE', label: '지우개 (클릭하여 삭제)', icon: <Eraser size={18} /> },
   ];
 
   const structureTypes: { id: StructureType; label: string; color: string }[] = [
@@ -70,6 +81,11 @@ export const Toolbar: React.FC = () => {
         <button onClick={handleAIAnalysis} disabled={isAnalyzing || !backgroundImage} className={`flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-md transition-all ${isAnalyzing ? 'bg-zinc-700 text-zinc-400' : !backgroundImage ? 'bg-emerald-900/30 text-emerald-700/50' : 'bg-emerald-600 text-white hover:bg-emerald-500'}`}>
           {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />}
           <span>{isAnalyzing ? 'AI 분석 중...' : 'AI 인식'}</span>
+        </button>
+
+        <button onClick={handleGenerateCenterLines} disabled={lines.length === 0} title="벽체 쌍에서 중심선 자동 생성" className={`flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-md transition-all ${lines.length === 0 ? 'bg-amber-900/30 text-amber-700/50' : 'bg-amber-600/90 text-white hover:bg-amber-500'}`}>
+          <Sparkles size={14} />
+          <span>중심선 자동</span>
         </button>
       </div>
 
