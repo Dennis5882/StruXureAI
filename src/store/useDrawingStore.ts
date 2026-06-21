@@ -32,6 +32,10 @@ interface DrawingState {
   dxfEntities: any[];
   isSidebarOpen: boolean;
 
+  // ⏳ 파일 로딩(DWG 변환 등) 상태
+  isLoadingFile: boolean;
+  loadingMessage: string;
+
   setMode: (mode: DrawingMode) => void;
   setType: (type: StructureType) => void;
   setOrthoMode: (enabled: boolean) => void;
@@ -48,6 +52,7 @@ interface DrawingState {
   setDxfEntities: (entities: any[]) => void;
   toggleDxfLayer: (name: string) => void;
   toggleSidebar: () => void;
+  setLoadingFile: (loading: boolean, message?: string) => void;
 
   addLine: (line: Omit<StructureLineData, 'id'> | StructureLineData) => void;
   undoLine: () => void;
@@ -81,6 +86,8 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   dxfLayers: [],
   dxfEntities: [],
   isSidebarOpen: false,
+  isLoadingFile: false,
+  loadingMessage: '',
 
   setMode: (mode) => set({ currentMode: mode, selectedLineId: mode !== 'SELECT' ? null : undefined }),
   setType: (type) => set({ currentType: type }),
@@ -102,6 +109,7 @@ export const useDrawingStore = create<DrawingState>((set) => ({
     ),
   })),
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+  setLoadingFile: (isLoadingFile, loadingMessage = '') => set({ isLoadingFile, loadingMessage }),
 
   addLine: (line) => set((state) => {
     const newLine = { ...line, id: ('id' in line) ? line.id : `str_${Date.now()}_${Math.random().toString(36).substring(2, 9)}` } as StructureLineData;

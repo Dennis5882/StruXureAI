@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.5.0** · 검증일: **2026-06-22** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.6.0** · 검증일: **2026-06-22** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -146,6 +146,7 @@ export interface StructureLineData {
 - **DXF 파싱 + 시각화 (Case A)**: 레이어 추출, 지오메트리(LINE/POLYLINE/CIRCLE/**ARC/ELLIPSE/TEXT/MTEXT**) 캔버스 렌더링
 - **레이어 매니저 사이드바**: 레이어 목록 표시, 가시성 토글, **구조 키워드 자동 필터링**(`S-`, `COL`, `WALL`, `CONC`, `기둥`, `옹벽`)
 - **파일 업로드**: 첨부 버튼 + **드래그앤드롭** (이미지/CAD 모두 지원)
+- **DWG 직접 열기**: 바이너리 DWG를 브라우저에서 LibreDWG(WASM)로 DXF 변환 후 렌더링 (백엔드 불필요, WASM은 DWG 열 때만 동적 로드)
 - **버전 표시**: 화면 우측 하단에 버전/개발자/빌드일/커밋 자동 표기
 
 ### 🟡 부분 구현 / 대체 구현
@@ -154,15 +155,21 @@ export interface StructureLineData {
 - **API 통신**: `axios` 대신 표준 `fetch` 사용
 
 ### ❌ 미구현 (예정)
+- **AI 추론 서버(YOLOv8-seg)**: 프론트 연동(`VITE_AI_API_URL`)은 준비됨, 실제 모델/서버는 미구축 (현재 목 데이터)
 - **그리드 스냅(Grid Snap)**: 상태값(`gridSize`)만 존재, 스냅 로직/UI 없음
 - **정점(Vertex) 편집 및 AI 가이드 하이브리드 보정**: 수동 객체는 SELECT 모드에서 이동/삭제는 되나 정점 편집은 미구현, AI 폴리곤은 비편집(가이드 표시 전용)
-- **DWG 실변환**: 앱 내에서 바이너리 DWG를 직접 열지는 못함 (DWG→DXF 변환 미통합). *검증용으로 LibreDWG WASM 변환은 확인됨 — 앱 통합은 별도 작업*
-- **DXF 일부 엔티티**: INSERT(블록 참조), DIMENSION(치수선), HATCH(해치), SPLINE 미렌더링
+- **DXF/DWG 일부 엔티티**: INSERT(블록 참조), DIMENSION(치수선), HATCH(해치), SPLINE 미렌더링 (블록으로 그려진 가구·기호 등은 표시되지 않음)
 - **이미지 전처리**(원근 보정/이진화), **데이터 내보내기/DB 연동**, **Phase 4 최적화**
 
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-22 — v0.6.0
+- ✨ **DWG 직접 열기** — LibreDWG(WASM)로 브라우저에서 DWG→DXF 변환 후 렌더링 (백엔드 불필요)
+  - WASM(~9MB)은 DWG를 처음 열 때만 동적 로드(코드 스플리팅)되어 초기 로딩에 영향 없음
+  - 변환 중 로딩 오버레이 표시
+  - 실제 도면 `B1F 1.dwg`(AC1024)로 검증: 레이어 11개, 그리드/벽체/문자 렌더링, 에러 0
 
 ### 2026-06-22 — v0.5.0
 - ✨ **DXF 엔티티 확장 렌더링**: ARC(호), ELLIPSE(타원), TEXT/MTEXT(문자) 추가

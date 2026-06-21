@@ -55,7 +55,7 @@ export const Workspace: React.FC = () => {
   const dragCounter = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
 
-  const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale } = useDrawingStore();
+  const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale, isLoadingFile, loadingMessage } = useDrawingStore();
 
   // ⌨️ 단축키(Ctrl+Z)로 실행 취소 기능 연동
   useEffect(() => {
@@ -537,6 +537,15 @@ export const Workspace: React.FC = () => {
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#a5b4fc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             <div className="text-indigo-100 font-bold text-sm">여기에 파일을 놓으세요</div>
             <div className="text-indigo-300/70 text-xs">이미지 (PNG/JPG 등) 또는 CAD (DXF/DWG)</div>
+          </div>
+        </div>
+      )}
+      {/* ⏳ 파일 로딩 오버레이 (DWG 변환 등) */}
+      {isLoadingFile && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center space-y-4">
+            <svg className="animate-spin" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+            <div className="text-indigo-200 text-sm font-medium">{loadingMessage || '불러오는 중...'}</div>
           </div>
         </div>
       )}
