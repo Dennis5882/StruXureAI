@@ -7,7 +7,7 @@ export const Workspace: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
 
-  const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons } = useDrawingStore();
+  const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale } = useDrawingStore();
 
   // ⌨️ 단축키(Ctrl+Z)로 실행 취소 기능 연동
   useEffect(() => {
@@ -61,6 +61,7 @@ export const Workspace: React.FC = () => {
       );
       img.set({ scaleX: scale, scaleY: scale, originX: 'left', originY: 'top' });
       canvas.backgroundImage = img;
+      setBgScale(scale); // AI 폴리곤 좌표를 동일 스케일로 정합시키기 위해 저장
       canvas.requestRenderAll();
     });
   }, [backgroundImage]);
@@ -146,10 +147,13 @@ export const Workspace: React.FC = () => {
     canvas.getObjects().filter((o: any) => o.isAi).forEach((o) => canvas.remove(o));
 
     const colorMap: Record<string, string> = { WALL: '#ef4444', COLUMN: '#3b82f6', BEAM: '#22c55e', CENTER_LINE: '#f59e0b' };
+    // AI 좌표는 원본 이미지 픽셀 기준 → 배경 렌더링 스케일(bgScale)을 곱해 정합
+    const s = bgScale || 1;
     (aiPolygons || []).forEach((poly) => {
       if (!poly.points || poly.points.length < 3) return;
       const color = colorMap[poly.type] || '#a855f7';
-      const polygon = new fabric.Polygon(poly.points, {
+      const points = poly.points.map((p) => ({ x: p.x * s, y: p.y * s }));
+      const polygon = new fabric.Polygon(points, {
         fill: `${color}40`, stroke: color, strokeWidth: 2,
         selectable: false, evented: false, objectCaching: false,
       });
@@ -159,7 +163,7 @@ export const Workspace: React.FC = () => {
     });
 
     canvas.requestRenderAll();
-  }, [aiPolygons]);
+  }, [aiPolygons, bgScale]);
 
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;

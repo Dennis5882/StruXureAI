@@ -21,6 +21,7 @@ interface DrawingState {
   unit: string;
   scaleRatio: number;
   backgroundImage: string | null;
+  bgScale: number; // 배경 이미지가 캔버스에 맞춰 렌더링될 때 적용된 스케일 (AI 폴리곤 좌표 정합용)
   
   // 🤖 AI 분석 상태 추가
   aiPolygons: { id: string, type: string, points: Point2D[] }[];
@@ -38,7 +39,8 @@ interface DrawingState {
   setUnit: (unit: string) => void;
   setScaleRatio: (ratio: number) => void;
   setBackgroundImage: (url: string | null) => void;
-  
+  setBgScale: (scale: number) => void;
+
   setAiPolygons: (polys: { id: string, type: string, points: Point2D[] }[]) => void;
   setIsAnalyzing: (status: boolean) => void;
 
@@ -71,6 +73,7 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   unit: 'mm',
   scaleRatio: 10,
   backgroundImage: null,
+  bgScale: 1,
   
   aiPolygons: [],
   isAnalyzing: false,
@@ -85,7 +88,8 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   setGridSize: (size) => set({ gridSize: size }),
   setUnit: (unit) => set({ unit }),
   setScaleRatio: (scaleRatio) => set({ scaleRatio }),
-  setBackgroundImage: (url) => set({ backgroundImage: url }),
+  setBackgroundImage: (url) => set({ backgroundImage: url, bgScale: url ? undefined : 1 }),
+  setBgScale: (bgScale) => set({ bgScale }),
   
   setAiPolygons: (aiPolygons) => set({ aiPolygons }),
   setIsAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
