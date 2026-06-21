@@ -14,6 +14,40 @@ const distToSegment = (p: Point2D, a: Point2D, b: Point2D): number => {
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 };
 
+// dxf-parser는 각도를 라디안/도 둘 다로 줄 수 있어 방어적으로 정규화
+const toRad = (a: number) => (Math.abs(a) > Math.PI * 2 + 0.001 ? (a * Math.PI) / 180 : a);
+
+// 호(ARC)를 DXF 좌표계에서 점 배열로 샘플링 (CCW: start→end)
+const arcPoints = (cx: number, cy: number, r: number, a0r: number, a1r: number): Point2D[] => {
+  let s = toRad(a0r), e = toRad(a1r);
+  while (e <= s) e += Math.PI * 2;
+  const n = Math.max(8, Math.ceil((e - s) / (Math.PI / 24)));
+  const pts: Point2D[] = [];
+  for (let i = 0; i <= n; i++) {
+    const a = s + ((e - s) * i) / n;
+    pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+  }
+  return pts;
+};
+
+// 타원(ELLIPSE)을 DXF 좌표계에서 점 배열로 샘플링
+const ellipsePoints = (cx: number, cy: number, major: Point2D, ratio: number, a0r: number, a1r: number): Point2D[] => {
+  const ma = Math.hypot(major.x, major.y);
+  const mi = ma * ratio;
+  const rot = Math.atan2(major.y, major.x);
+  let s = toRad(a0r), e = toRad(a1r);
+  if (Math.abs(e - s) < 1e-6) { s = 0; e = Math.PI * 2; }
+  while (e <= s) e += Math.PI * 2;
+  const n = Math.max(16, Math.ceil((e - s) / (Math.PI / 24)));
+  const pts: Point2D[] = [];
+  for (let i = 0; i <= n; i++) {
+    const a = s + ((e - s) * i) / n;
+    const px = Math.cos(a) * ma, py = Math.sin(a) * mi;
+    pts.push({ x: cx + px * Math.cos(rot) - py * Math.sin(rot), y: cy + px * Math.sin(rot) + py * Math.cos(rot) });
+  }
+  return pts;
+};
+
 export const Workspace: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -128,9 +162,18 @@ export const Workspace: React.FC = () => {
     dxfEntities.forEach((e: any) => {
       if (Array.isArray(e.vertices)) e.vertices.forEach((v: any) => acc(v.x, v.y));
       else if (e.center && typeof e.radius === 'number') {
+        // CIRCLE / ARC
         acc(e.center.x - e.radius, e.center.y - e.radius);
         acc(e.center.x + e.radius, e.center.y + e.radius);
+      } else if (e.center && e.majorAxisEndPoint) {
+        // ELLIPSE
+        const m = Math.hypot(e.majorAxisEndPoint.x, e.majorAxisEndPoint.y);
+        acc(e.center.x - m, e.center.y - m);
+        acc(e.center.x + m, e.center.y + m);
       }
+      // TEXT/MTEXT 등 위치점
+      if (e.startPoint) acc(e.startPoint.x, e.startPoint.y);
+      if (e.position) acc(e.position.x, e.position.y);
     });
 
     if (!isFinite(minX) || !isFinite(maxX)) { canvas.requestRenderAll(); return; }
@@ -163,6 +206,27 @@ export const Workspace: React.FC = () => {
           left: tx(e.center.x), top: ty(e.center.y), radius: e.radius * scale,
           originX: 'center', originY: 'center', ...base,
         });
+      } else if (type === 'ARC' && e.center && typeof e.radius === 'number') {
+        const pts = arcPoints(e.center.x, e.center.y, e.radius, e.startAngle ?? 0, e.endAngle ?? Math.PI * 2)
+          .map((p) => ({ x: tx(p.x), y: ty(p.y) }));
+        obj = new fabric.Polyline(pts, { ...base, objectCaching: false });
+      } else if (type === 'ELLIPSE' && e.center && e.majorAxisEndPoint) {
+        const pts = ellipsePoints(e.center.x, e.center.y, e.majorAxisEndPoint, e.axisRatio ?? 1, e.startAngle ?? 0, e.endAngle ?? Math.PI * 2)
+          .map((p) => ({ x: tx(p.x), y: ty(p.y) }));
+        obj = new fabric.Polyline(pts, { ...base, objectCaching: false });
+      } else if (type === 'TEXT' || type === 'MTEXT') {
+        const pos = e.startPoint || e.position;
+        const raw = (e.text || '').replace(/\\[A-Za-z][^;]*;|[{}]/g, '').trim(); // MTEXT 포맷 코드 간이 제거
+        const h = (e.textHeight || e.height || 0) * scale;
+        if (pos && raw) {
+          obj = new fabric.Text(raw, {
+            left: tx(pos.x), top: ty(pos.y),
+            fontSize: Math.max(8, Math.min(h || 12, 200)),
+            fill: color, stroke: undefined,
+            originX: 'left', originY: 'bottom',
+            fontFamily: 'sans-serif', selectable: false, evented: false, visible,
+          });
+        }
       }
 
       if (obj) {
