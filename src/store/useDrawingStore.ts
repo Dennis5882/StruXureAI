@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { DrawingMode, StructureType, StructureLineData, Point2D } from '../types/drawing';
 
+// 📐 DXF 레이어 정보
+export interface DxfLayer {
+  name: string;
+  visible: boolean;
+  color?: string;
+}
+
 interface DrawingState {
   currentMode: DrawingMode;
   currentType: StructureType;
@@ -19,6 +26,11 @@ interface DrawingState {
   aiPolygons: { id: string, type: string, points: Point2D[] }[];
   isAnalyzing: boolean;
 
+  // 📐 DXF 레이어 / 사이드바 상태 (Phase 3)
+  dxfLayers: DxfLayer[];
+  dxfEntities: any[];
+  isSidebarOpen: boolean;
+
   setMode: (mode: DrawingMode) => void;
   setType: (type: StructureType) => void;
   setOrthoMode: (enabled: boolean) => void;
@@ -29,7 +41,12 @@ interface DrawingState {
   
   setAiPolygons: (polys: { id: string, type: string, points: Point2D[] }[]) => void;
   setIsAnalyzing: (status: boolean) => void;
-  
+
+  setDxfLayers: (layers: DxfLayer[]) => void;
+  setDxfEntities: (entities: any[]) => void;
+  toggleDxfLayer: (name: string) => void;
+  toggleSidebar: () => void;
+
   addLine: (line: Omit<StructureLineData, 'id'> | StructureLineData) => void;
   undoLine: () => void;
   updateLine: (id: string, updatedData: Partial<StructureLineData>) => void;
@@ -58,6 +75,10 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   aiPolygons: [],
   isAnalyzing: false,
 
+  dxfLayers: [],
+  dxfEntities: [],
+  isSidebarOpen: false,
+
   setMode: (mode) => set({ currentMode: mode, selectedLineId: mode !== 'SELECT' ? null : undefined }),
   setType: (type) => set({ currentType: type }),
   setOrthoMode: (enabled) => set({ isOrthoMode: enabled }),
@@ -68,6 +89,15 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   
   setAiPolygons: (aiPolygons) => set({ aiPolygons }),
   setIsAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
+
+  setDxfLayers: (dxfLayers) => set({ dxfLayers }),
+  setDxfEntities: (dxfEntities) => set({ dxfEntities }),
+  toggleDxfLayer: (name) => set((state) => ({
+    dxfLayers: state.dxfLayers.map((layer) =>
+      layer.name === name ? { ...layer, visible: !layer.visible } : layer
+    ),
+  })),
+  toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
 
   addLine: (line) => set((state) => {
     const newLine = { ...line, id: ('id' in line) ? line.id : `str_${Date.now()}_${Math.random().toString(36).substring(2, 9)}` } as StructureLineData;

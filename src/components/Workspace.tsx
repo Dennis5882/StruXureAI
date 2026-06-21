@@ -7,7 +7,7 @@ export const Workspace: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
 
-  const { currentMode, lines, undoLine } = useDrawingStore();
+  const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons } = useDrawingStore();
 
   // ⌨️ 단축키(Ctrl+Z)로 실행 취소 기능 연동
   useEffect(() => {
@@ -41,6 +41,125 @@ export const Workspace: React.FC = () => {
 
     if (hasChanged) canvas.requestRenderAll();
   }, [lines]);
+
+  // 🖼️ 배경 도면 이미지 렌더링 (캔버스에 맞춰 스케일)
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+
+    if (!backgroundImage) {
+      canvas.backgroundImage = undefined;
+      canvas.requestRenderAll();
+      return;
+    }
+
+    fabric.FabricImage.fromURL(backgroundImage).then((img) => {
+      if (!img) return;
+      const scale = Math.min(
+        canvas.getWidth() / (img.width || 1),
+        canvas.getHeight() / (img.height || 1)
+      );
+      img.set({ scaleX: scale, scaleY: scale, originX: 'left', originY: 'top' });
+      canvas.backgroundImage = img;
+      canvas.requestRenderAll();
+    });
+  }, [backgroundImage]);
+
+  // 📐 DXF 지오메트리 렌더링 + 레이어 가시성 연동 (Phase 3)
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+
+    // 기존 DXF 객체 제거
+    canvas.getObjects().filter((o: any) => o.isDxf).forEach((o) => canvas.remove(o));
+
+    if (!dxfEntities || dxfEntities.length === 0) {
+      canvas.requestRenderAll();
+      return;
+    }
+
+    // 레이어별 색상/가시성 조회 맵
+    const layerMap = new Map(dxfLayers.map((l) => [l.name, l]));
+
+    // 1) 전체 바운딩 박스 계산
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const acc = (x: number, y: number) => {
+      if (!isFinite(x) || !isFinite(y)) return;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    };
+    dxfEntities.forEach((e: any) => {
+      if (Array.isArray(e.vertices)) e.vertices.forEach((v: any) => acc(v.x, v.y));
+      else if (e.center && typeof e.radius === 'number') {
+        acc(e.center.x - e.radius, e.center.y - e.radius);
+        acc(e.center.x + e.radius, e.center.y + e.radius);
+      }
+    });
+
+    if (!isFinite(minX) || !isFinite(maxX)) { canvas.requestRenderAll(); return; }
+
+    // 2) 캔버스에 맞춘 스케일/오프셋 (DXF Y축은 위로 향하므로 뒤집음)
+    const pad = 40;
+    const dxfW = (maxX - minX) || 1;
+    const dxfH = (maxY - minY) || 1;
+    const scale = Math.min((canvas.getWidth() - pad * 2) / dxfW, (canvas.getHeight() - pad * 2) / dxfH);
+    const tx = (x: number) => pad + (x - minX) * scale;
+    const ty = (y: number) => pad + (maxY - y) * scale;
+
+    // 3) 엔티티 → Fabric 객체
+    dxfEntities.forEach((e: any) => {
+      const layer = layerMap.get(e.layer);
+      const visible = layer ? layer.visible : true;
+      const color = (layer && layer.color) || '#d4d4d8';
+      const base = { stroke: color, strokeWidth: 1, fill: 'transparent', selectable: false, evented: false, visible };
+      let obj: fabric.Object | null = null;
+
+      const type = (e.type || '').toUpperCase();
+      if (type === 'LINE' && Array.isArray(e.vertices) && e.vertices.length >= 2) {
+        const [a, b] = e.vertices;
+        obj = new fabric.Line([tx(a.x), ty(a.y), tx(b.x), ty(b.y)], base);
+      } else if ((type === 'LWPOLYLINE' || type === 'POLYLINE') && Array.isArray(e.vertices) && e.vertices.length >= 2) {
+        const pts = e.vertices.map((v: any) => ({ x: tx(v.x), y: ty(v.y) }));
+        obj = new fabric.Polyline(pts, { ...base, objectCaching: false });
+      } else if (type === 'CIRCLE' && e.center) {
+        obj = new fabric.Circle({
+          left: tx(e.center.x), top: ty(e.center.y), radius: e.radius * scale,
+          originX: 'center', originY: 'center', ...base,
+        });
+      }
+
+      if (obj) {
+        (obj as any).isDxf = true;
+        (obj as any).dxfLayer = e.layer;
+        canvas.add(obj);
+      }
+    });
+
+    canvas.requestRenderAll();
+  }, [dxfEntities, dxfLayers]);
+
+  // 🤖 AI 인식 폴리곤 렌더링 (반투명 오버레이)
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+
+    canvas.getObjects().filter((o: any) => o.isAi).forEach((o) => canvas.remove(o));
+
+    const colorMap: Record<string, string> = { WALL: '#ef4444', COLUMN: '#3b82f6', BEAM: '#22c55e', CENTER_LINE: '#f59e0b' };
+    (aiPolygons || []).forEach((poly) => {
+      if (!poly.points || poly.points.length < 3) return;
+      const color = colorMap[poly.type] || '#a855f7';
+      const polygon = new fabric.Polygon(poly.points, {
+        fill: `${color}40`, stroke: color, strokeWidth: 2,
+        selectable: false, evented: false, objectCaching: false,
+      });
+      (polygon as any).isAi = true;
+      (polygon as any).id = poly.id;
+      canvas.add(polygon);
+    });
+
+    canvas.requestRenderAll();
+  }, [aiPolygons]);
 
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
@@ -161,7 +280,7 @@ export const Workspace: React.FC = () => {
       canvas.requestRenderAll();
     });
 
-    canvas.on('mouse:up', () => {
+    canvas.on('mouse:up', (opt) => {
       if (!isDrawing || !currentShape) return;
       isDrawing = false;
       const state = useDrawingStore.getState();
@@ -194,7 +313,11 @@ export const Workspace: React.FC = () => {
 
     if (currentMode === 'SELECT') {
       canvas.selection = true;
-      canvas.forEachObject((obj) => { obj.selectable = true; obj.evented = true; });
+      canvas.forEachObject((obj: any) => {
+        // DXF 도면/AI 오버레이는 배경 참조용이므로 선택 불가 유지
+        if (obj.isDxf || obj.isAi) return;
+        obj.selectable = true; obj.evented = true;
+      });
     } else {
       canvas.selection = false;
       canvas.forEachObject((obj) => { obj.selectable = false; obj.evented = false; });
