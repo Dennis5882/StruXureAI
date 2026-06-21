@@ -335,6 +335,11 @@ export const Workspace: React.FC = () => {
         {currentMode === 'SELECT' && "💡 [Alt + 드래그] 뷰포트 이동 | [마우스 휠] 줌 인/아웃"}
         {currentMode !== 'SELECT' && "✏️ 도형 및 선 그리기 모드. Ctrl+Z 를 눌러 실행을 취소할 수 있습니다."}
       </div>
+      {/* 🏷️ 버전 정보 (빌드 시 자동 주입) */}
+      <div className="absolute bottom-4 right-4 z-10 bg-black/60 text-zinc-500 text-[10px] px-2.5 py-1 rounded pointer-events-none font-mono leading-tight text-right">
+        <div>StruXureAI <span className="text-zinc-300">v{__APP_VERSION__}</span> · by {__APP_DEVELOPER__}</div>
+        <div className="text-zinc-600">build {__APP_BUILD_DATE__} · {__APP_COMMIT__}</div>
+      </div>
       <canvas ref={canvasRef} className="w-full h-full" />
     </div>
   );
