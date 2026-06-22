@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { MousePointer, PenTool, Square, Circle, Triangle, Eraser, Sparkles, Layers, Ruler, Undo2, ImagePlus, Bot, Loader2, PanelRightOpen } from 'lucide-react';
+import { MousePointer, PenTool, Square, Circle, Triangle, Eraser, Sparkles, Layers, Ruler, Undo2, ImagePlus, Bot, Loader2, PanelRightOpen, Grid3x3 } from 'lucide-react';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { DrawingMode, StructureType } from '../types/drawing';
 import { extractCenterLinesFromWalls } from '../utils/geometry';
@@ -10,9 +10,9 @@ export const Toolbar: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dxfInputRef = useRef<HTMLInputElement>(null);
   
-  const { 
-    currentMode, currentType, lines, unit, scaleRatio, backgroundImage, isAnalyzing, isSidebarOpen,
-    setMode, setType, setUnit, setScaleRatio, undoLine, addLine, setAiPolygons, setIsAnalyzing, toggleSidebar
+  const {
+    currentMode, currentType, lines, unit, scaleRatio, backgroundImage, isAnalyzing, isSidebarOpen, gridSize,
+    setMode, setType, setUnit, setScaleRatio, undoLine, addLine, setAiPolygons, setIsAnalyzing, toggleSidebar, setGridSize
   } = useDrawingStore();
 
   // 🪄 벽체 쌍에서 중심선 자동 생성
@@ -106,6 +106,18 @@ export const Toolbar: React.FC = () => {
             ))}
           </div>
         )}
+
+        {/* 📏 그리드 스냅 (격자 간격 선택, 0=끄기) */}
+        <div className="flex items-center space-x-1 bg-zinc-950 p-1 px-2 rounded-lg border border-zinc-800 text-xs" title="그리기/이동 시 격자에 맞춤(스냅)">
+          <Grid3x3 size={14} className={gridSize > 0 ? 'text-indigo-400' : 'text-zinc-500'} />
+          <select value={gridSize} onChange={(e) => setGridSize(Number(e.target.value))} className={`bg-transparent font-bold outline-none cursor-pointer ${gridSize > 0 ? 'text-indigo-400' : 'text-zinc-500'}`}>
+            <option value={0}>끄기</option>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+        </div>
 
         <div className="flex items-center space-x-1 bg-zinc-950 p-1 px-2 rounded-lg border border-zinc-800 text-xs">
           <Ruler size={14} className="text-zinc-400" />

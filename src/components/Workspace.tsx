@@ -4,6 +4,18 @@ import { useDrawingStore } from '../store/useDrawingStore';
 import { loadFiles } from '../utils/fileLoader';
 import { Point2D } from '../types/drawing';
 
+// 그리드 스냅: g>0이면 가장 가까운 격자점으로 반올림
+const snapTo = (v: number, g: number): number => (g > 0 ? Math.round(v / g) * g : v);
+
+// fabric.Line의 두 끝점을 씬(scene) 절대좌표로 반환 (이동/회전/스케일 반영)
+const lineAbsEnds = (line: any): Point2D[] => {
+  const m = line.calcTransformMatrix();
+  const po = line.pathOffset || { x: 0, y: 0 };
+  const p1 = fabric.util.transformPoint(new fabric.Point(line.x1 - po.x, line.y1 - po.y), m);
+  const p2 = fabric.util.transformPoint(new fabric.Point(line.x2 - po.x, line.y2 - po.y), m);
+  return [{ x: p1.x, y: p1.y }, { x: p2.x, y: p2.y }];
+};
+
 // 점 p에서 선분 a-b 까지의 최단 거리
 const distToSegment = (p: Point2D, a: Point2D, b: Point2D): number => {
   const dx = b.x - a.x, dy = b.y - a.y;
@@ -55,7 +67,7 @@ export const Workspace: React.FC = () => {
   const dragCounter = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
 
-  const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale, isLoadingFile, loadingMessage } = useDrawingStore();
+  const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale, isLoadingFile, loadingMessage, gridSize } = useDrawingStore();
 
   // ⌨️ 단축키(Ctrl+Z)로 실행 취소 기능 연동
   useEffect(() => {
@@ -101,7 +113,8 @@ export const Workspace: React.FC = () => {
       const obj = new fabric.Line([a.x, a.y, b.x, b.y], {
         stroke: colorMap[line.type] || '#ffffff',
         strokeWidth: line.thickness || 2,
-        selectable: false, evented: false,
+        // 선은 fabric 히트가 불안정 → 항상 비활성, 선택/이동/정점편집은 기하적으로 직접 처리
+        selectable: false, evented: false, hasControls: false,
         originX: 'center', originY: 'center',
       });
       (obj as any).id = line.id;
@@ -111,6 +124,31 @@ export const Workspace: React.FC = () => {
 
     if (hasChanged) canvas.requestRenderAll();
   }, [lines]);
+
+  // 📏 그리드(격자) 시각화 — gridSize>0일 때 옅은 격자선을 캔버스 좌표계에 그림
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    canvas.getObjects().filter((o: any) => o.isGrid).forEach((o) => canvas.remove(o));
+
+    if (gridSize > 0) {
+      const W = canvas.getWidth(), H = canvas.getHeight();
+      const margin = Math.max(W, H); // 팬/줌을 고려해 화면보다 넓게 그림
+      const x0 = -margin, x1 = W + margin, y0 = -margin, y1 = H + margin;
+      const maxLines = 260; // 과도한 격자선 방지 (작은 간격이면 시각 격자는 생략, 스냅은 유지)
+      const nx = (x1 - x0) / gridSize, ny = (y1 - y0) / gridSize;
+      if (nx <= maxLines && ny <= maxLines) {
+        const gp = { stroke: '#3f3f46', strokeWidth: 1, selectable: false, evented: false, hoverCursor: 'default' };
+        for (let x = Math.ceil(x0 / gridSize) * gridSize; x <= x1; x += gridSize) {
+          const l = new fabric.Line([x, y0, x, y1], gp); (l as any).isGrid = true; canvas.add(l); canvas.sendObjectToBack(l);
+        }
+        for (let y = Math.ceil(y0 / gridSize) * gridSize; y <= y1; y += gridSize) {
+          const l = new fabric.Line([x0, y, x1, y], gp); (l as any).isGrid = true; canvas.add(l); canvas.sendObjectToBack(l);
+        }
+      }
+    }
+    canvas.requestRenderAll();
+  }, [gridSize]);
 
   // 🖼️ 배경 도면 이미지 렌더링 (캔버스에 맞춰 스케일)
   useEffect(() => {
@@ -287,6 +325,7 @@ export const Workspace: React.FC = () => {
     });
     
     fabricCanvasRef.current = canvas;
+    (canvasRef.current as any).__fabric = canvas; // 디버깅/E2E 테스트에서 캔버스 인스턴스 접근용
 
     canvas.on('mouse:wheel', (opt) => {
       const evt = opt.e;
@@ -298,6 +337,11 @@ export const Workspace: React.FC = () => {
       useDrawingStore.getState().setZoom(zoom);
       evt.preventDefault();
       evt.stopPropagation();
+      // 편집 중이면 핸들 크기를 줌에 맞춰 갱신
+      if (editLineId) {
+        const lo = canvas.getObjects().find((o: any) => o.id === editLineId && o.type === 'line');
+        if (lo) showVHandles(lo);
+      }
     });
 
     let isDrawing = false;
@@ -310,6 +354,60 @@ export const Workspace: React.FC = () => {
     let isPanning = false;
     let lastPosX = 0;
     let lastPosY = 0;
+    // ✏️ 정점(끝점) 편집 상태
+    let editLineId: string | null = null;
+    let vHandles: fabric.Object[] = [];
+    let draggingVertex = false;
+    let vertexDrag: { id: string; index: number } | null = null; // 끝점 드래그 중
+    let lineMove: { id: string; sx: number; sy: number; coords: Point2D[] } | null = null; // 선 전체 이동 중(시작 기준)
+    let shapeMove: { id: string; obj: any; objX0: number; objY0: number; sx: number; sy: number; coords0: Point2D[] } | null = null; // 사각형/원/삼각형 이동
+
+    const lineColorMap: Record<string, string> = { WALL: '#ef4444', COLUMN: '#3b82f6', BEAM: '#22c55e', CENTER_LINE: '#f59e0b' };
+
+    const clearVHandles = () => {
+      vHandles.forEach((h) => canvas.remove(h));
+      vHandles = [];
+      editLineId = null;
+    };
+
+    // 선택된 직선(LINE)의 두 끝점에 드래그 핸들을 띄운다 (스토어 좌표 기준)
+    const showVHandles = (lineObj: any) => {
+      clearVHandles();
+      const st = useDrawingStore.getState();
+      const d = st.lines.find((l) => l.id === lineObj.id);
+      if (!d || d.shape !== 'line' || d.coordinates.length < 2) return;
+      editLineId = lineObj.id;
+      lineObj.set({ hasControls: false }); // 기본 스케일 핸들 대신 끝점 핸들 사용
+      const z = canvas.getZoom();
+      d.coordinates.slice(0, 2).forEach((pt, idx) => {
+        const h = new fabric.Circle({
+          left: pt.x, top: pt.y, radius: 6 / z, fill: '#fde047', stroke: '#18181b', strokeWidth: 1.5 / z,
+          originX: 'center', originY: 'center', hasControls: false, hasBorders: false,
+          // 장식용: fabric이 타깃으로 잡지 않도록 비활성(드래그는 기하적으로 직접 처리)
+          selectable: false, evented: false,
+        });
+        (h as any).isVertexHandle = true; (h as any).vertexIndex = idx; (h as any).lineId = lineObj.id;
+        canvas.add(h); canvas.bringObjectToFront(h);
+        vHandles.push(h);
+      });
+      canvas.requestRenderAll();
+    };
+
+    // 직선 fabric 객체를 스토어 좌표로 다시 만든다 (끝점 이동 시 실시간 반영용)
+    const rebuildLineObject = (id: string) => {
+      const st = useDrawingStore.getState();
+      const d = st.lines.find((l) => l.id === id);
+      if (!d || d.coordinates.length < 2) return;
+      canvas.getObjects().filter((o: any) => o.id === id && o.type === 'line').forEach((o) => canvas.remove(o));
+      const [a, b] = d.coordinates;
+      const obj = new fabric.Line([a.x, a.y, b.x, b.y], {
+        stroke: lineColorMap[d.type] || '#ffffff', strokeWidth: d.thickness || 2,
+        originX: 'center', originY: 'center', selectable: false, evented: false, hasControls: false,
+      });
+      (obj as any).id = id;
+      canvas.add(obj);
+      vHandles.forEach((h) => canvas.bringObjectToFront(h));
+    };
 
     canvas.on('mouse:down', (opt) => {
       const state = useDrawingStore.getState();
@@ -321,6 +419,57 @@ export const Workspace: React.FC = () => {
         lastPosX = opt.e.clientX;
         lastPosY = opt.e.clientY;
         canvas.setCursor('grabbing');
+        return;
+      }
+
+      // 🎯 선택 모드: fabric RC의 히트 판정이 불안정 → 모든 도형을 기하적으로 직접 처리
+      if (mode === 'SELECT') {
+        const p = canvas.getPointer(opt.e);
+        const z = canvas.getZoom();
+        const tol = 8 / z;
+
+        // 1) 편집 중인 선의 끝점 근처 → 정점 드래그 시작
+        if (editLineId) {
+          const d = state.lines.find((l) => l.id === editLineId);
+          if (d && d.coordinates.length >= 2) {
+            for (let i = 0; i < 2; i++) {
+              if (Math.hypot(p.x - d.coordinates[i].x, p.y - d.coordinates[i].y) <= 10 / z) {
+                vertexDrag = { id: editLineId, index: i }; draggingVertex = true; return;
+              }
+            }
+          }
+        }
+
+        // 2) 포인터가 닿는 도형 탐색 (나중에 그린 것이 위 → 뒤에서부터)
+        let hit: typeof state.lines[number] | null = null;
+        for (let i = state.lines.length - 1; i >= 0; i--) {
+          const ln = state.lines[i];
+          if (ln.coordinates.length < 2) continue;
+          const [c0, c1] = ln.coordinates;
+          const shp = ln.shape || 'line';
+          let ok = false;
+          if (shp === 'line') ok = distToSegment(p, c0, c1) <= tol;
+          else if (shp === 'circle') { const r = Math.hypot(c1.x - c0.x, c1.y - c0.y); ok = Math.hypot(p.x - c0.x, p.y - c0.y) <= r + tol; }
+          else ok = p.x >= Math.min(c0.x, c1.x) - tol && p.x <= Math.max(c0.x, c1.x) + tol && p.y >= Math.min(c0.y, c1.y) - tol && p.y <= Math.max(c0.y, c1.y) + tol;
+          if (ok) { hit = ln; break; }
+        }
+
+        if (!hit) { clearVHandles(); canvas.discardActiveObject(); canvas.requestRenderAll(); return; }
+
+        if ((hit.shape || 'line') === 'line') {
+          // 선: 끝점 핸들 표시 + 전체 이동
+          const obj = canvas.getObjects().find((o: any) => o.id === hit!.id && o.type === 'line');
+          if (obj) showVHandles(obj);
+          lineMove = { id: hit.id, sx: p.x, sy: p.y, coords: hit.coordinates.map((c) => ({ ...c })) };
+        } else {
+          // 사각형/원/삼각형: fabric 객체를 직접 평행이동
+          clearVHandles();
+          const obj = canvas.getObjects().find((o: any) => o.id === hit!.id && o.type !== 'line');
+          if (obj) {
+            shapeMove = { id: hit.id, obj, objX0: (obj as any).left, objY0: (obj as any).top, sx: p.x, sy: p.y, coords0: hit.coordinates.map((c) => ({ ...c })) };
+            canvas.setActiveObject(obj as any); canvas.requestRenderAll();
+          }
+        }
         return;
       }
 
@@ -346,8 +495,8 @@ export const Workspace: React.FC = () => {
 
       isDrawing = true;
       const pointer = canvas.getPointer(opt.e);
-      startX = pointer.x;
-      startY = pointer.y;
+      startX = snapTo(pointer.x, state.gridSize);
+      startY = snapTo(pointer.y, state.gridSize);
       objId = `str_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       
       const colorMap: Record<string, string> = { WALL: '#ef4444', COLUMN: '#3b82f6', BEAM: '#22c55e', CENTER_LINE: '#f59e0b' };
@@ -394,11 +543,56 @@ export const Workspace: React.FC = () => {
         return;
       }
 
+      // ✏️ 정점(끝점) 드래그
+      if (vertexDrag) {
+        const st = useDrawingStore.getState();
+        const p = canvas.getPointer(opt.e);
+        const d = st.lines.find((l) => l.id === vertexDrag!.id);
+        if (d) {
+          const coords = d.coordinates.map((c) => ({ ...c }));
+          coords[vertexDrag.index] = { x: snapTo(p.x, st.gridSize), y: snapTo(p.y, st.gridSize) };
+          st.updateLine(vertexDrag.id, { coordinates: coords });
+          rebuildLineObject(vertexDrag.id);
+          const obj = canvas.getObjects().find((o: any) => o.id === vertexDrag!.id && o.type === 'line');
+          if (obj) showVHandles(obj);
+        }
+        return;
+      }
+
+      // ✏️ 선 전체 이동 (시작 좌표 기준 누적 평행이동, 격자 스냅)
+      if (lineMove) {
+        const st = useDrawingStore.getState();
+        const p = canvas.getPointer(opt.e);
+        const dx = p.x - lineMove.sx, dy = p.y - lineMove.sy;
+        const coords = lineMove.coords.map((c) => ({ x: snapTo(c.x + dx, st.gridSize), y: snapTo(c.y + dy, st.gridSize) }));
+        st.updateLine(lineMove.id, { coordinates: coords });
+        rebuildLineObject(lineMove.id);
+        const obj = canvas.getObjects().find((o: any) => o.id === lineMove!.id && o.type === 'line');
+        if (obj) showVHandles(obj);
+        return;
+      }
+
+      // ✏️ 사각형/원/삼각형 평행이동 (fabric 객체 직접 이동 + 스토어 갱신, 격자 스냅)
+      if (shapeMove) {
+        const st = useDrawingStore.getState();
+        const p = canvas.getPointer(opt.e);
+        const g = st.gridSize;
+        let nl = shapeMove.objX0 + (p.x - shapeMove.sx);
+        let nt = shapeMove.objY0 + (p.y - shapeMove.sy);
+        if (g > 0) { nl = snapTo(nl, g); nt = snapTo(nt, g); }
+        const adx = nl - shapeMove.objX0, ady = nt - shapeMove.objY0;
+        shapeMove.obj.set({ left: nl, top: nt }); shapeMove.obj.setCoords();
+        const coords = shapeMove.coords0.map((c) => ({ x: c.x + adx, y: c.y + ady }));
+        st.updateLine(shapeMove.id, { coordinates: coords });
+        canvas.requestRenderAll();
+        return;
+      }
+
       if (!isDrawing || !currentShape || !currentText) return;
       const state = useDrawingStore.getState();
       const pointer = canvas.getPointer(opt.e);
-      let endX = pointer.x;
-      let endY = pointer.y;
+      let endX = snapTo(pointer.x, state.gridSize);
+      let endY = snapTo(pointer.y, state.gridSize);
 
       // 📐 실시간 드래그 도형 렌더링
       if (state.currentMode === 'DRAW_LINE') {
@@ -452,18 +646,61 @@ export const Workspace: React.FC = () => {
       isDrawing = false;
       const state = useDrawingStore.getState();
       const pointer = canvas.getPointer(opt.e); // 최종 포인터 위치
-      
+      const endX = snapTo(pointer.x, state.gridSize);
+      const endY = snapTo(pointer.y, state.gridSize);
+
       state.addLine({
         id: objId,
         source: 'MANUAL', type: state.currentType,
         shape: state.currentMode.replace('DRAW_', '').toLowerCase(),
-        coordinates: [{ x: startX, y: startY }, { x: pointer.x, y: pointer.y }],
+        coordinates: [{ x: startX, y: startY }, { x: endX, y: endY }],
         thickness: 4,
       });
       
       currentShape = null;
       currentText = null;
     });
+
+    // 🟡 fabric 네이티브 객체(rect/원/삼각형) 이동 시 그리드 스냅
+    canvas.on('object:moving', (opt) => {
+      const obj: any = opt.target;
+      if (!obj || obj.isVertexHandle) return;
+      const g = useDrawingStore.getState().gridSize;
+      if (g > 0) obj.set({ left: snapTo(obj.left, g), top: snapTo(obj.top, g) });
+    });
+
+    // 💾 이동/크기/회전 변경을 스토어 좌표에 반영 (영속화)
+    canvas.on('object:modified', (opt) => {
+      const obj: any = opt.target;
+      if (!obj || !obj.id || obj.isVertexHandle || obj.isDxf || obj.isAi) return;
+      const st = useDrawingStore.getState();
+      let coords: Point2D[];
+      if (obj.type === 'line') {
+        coords = lineAbsEnds(obj);
+      } else {
+        obj.setCoords();
+        const a = obj.aCoords;
+        coords = [{ x: a.tl.x, y: a.tl.y }, { x: a.br.x, y: a.br.y }];
+      }
+      st.updateLine(String(obj.id), { coordinates: coords });
+      if (editLineId === obj.id) showVHandles(obj); // 본체 이동 후 핸들 위치 갱신
+    });
+
+    // 🎯 선택 시: 단일 직선이면 끝점 편집 핸들 표시
+    const onSelect = () => {
+      if (useDrawingStore.getState().currentMode !== 'SELECT') return;
+      const active = canvas.getActiveObjects();
+      if (active.length === 1) {
+        const o: any = active[0];
+        if (o.isVertexHandle) return; // 핸들을 잡은 상태면 유지
+        if (o.type === 'line' && o.id) { showVHandles(o); return; }
+      }
+      clearVHandles();
+    };
+    canvas.on('selection:created', onSelect);
+    canvas.on('selection:updated', onSelect);
+    canvas.on('selection:cleared', () => { if (!draggingVertex && !lineMove) clearVHandles(); });
+    canvas.on('mouse:up', () => { draggingVertex = false; vertexDrag = null; lineMove = null; shapeMove = null; });
 
     const handleResize = () => {
       if (!containerRef.current) return;
@@ -478,19 +715,24 @@ export const Workspace: React.FC = () => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
 
+    // SELECT 모드가 아니면 정점 편집 핸들 제거
+    if (currentMode !== 'SELECT') {
+      canvas.getObjects().filter((o: any) => o.isVertexHandle).forEach((o) => canvas.remove(o));
+    }
+
     if (currentMode === 'SELECT') {
-      canvas.selection = true;
+      canvas.selection = false; // 러버밴드 끔 (선은 직접 처리, 개별 객체 선택은 유지)
       canvas.forEachObject((obj: any) => {
-        // DXF 도면/AI 오버레이는 배경 참조용이므로 선택 불가 유지
-        if (obj.isDxf || obj.isAi) return;
+        // DXF/AI/격자/핸들은 배경·장식, 선(line)은 기하적으로 직접 처리 → fabric 선택 제외
+        if (obj.isDxf || obj.isAi || obj.isGrid || obj.isVertexHandle || obj.type === 'line') return;
         obj.selectable = true; obj.evented = true;
       });
     } else if (currentMode === 'DELETE') {
-      // 🧽 삭제 모드: 선택은 막되 클릭은 감지되도록 evented만 켠다 (배경 제외)
+      // 🧽 삭제 모드: 선택은 막되 클릭은 감지되도록 evented만 켠다 (배경/격자 제외)
       canvas.selection = false;
       canvas.forEachObject((obj: any) => {
         obj.selectable = false;
-        obj.evented = !(obj.isDxf || obj.isAi);
+        obj.evented = !(obj.isDxf || obj.isAi || obj.isGrid);
       });
     } else {
       canvas.selection = false;
@@ -536,7 +778,7 @@ export const Workspace: React.FC = () => {
       onDrop={handleDrop}
     >
       <div className="absolute bottom-4 left-4 z-10 bg-black/70 text-zinc-300 text-xs px-3 py-1.5 rounded pointer-events-none font-mono">
-        {currentMode === 'SELECT' && "💡 [Alt + 드래그] 뷰포트 이동 | [마우스 휠] 줌 인/아웃"}
+        {currentMode === 'SELECT' && "💡 객체 클릭→이동/크기 조절 · 선은 노란 끝점을 끌어 편집 | [Alt+드래그] 이동 · [휠] 줌"}
         {currentMode === 'DELETE' && "🧽 삭제 모드: 지울 객체를 클릭하세요. [Alt + 드래그] 이동 | [휠] 줌"}
         {currentMode !== 'SELECT' && currentMode !== 'DELETE' && "✏️ 도형 및 선 그리기 모드. Ctrl+Z 실행취소 | [Alt + 드래그] 이동 | [휠] 줌"}
       </div>
