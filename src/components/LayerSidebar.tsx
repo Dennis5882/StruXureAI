@@ -17,7 +17,7 @@ export const LayerSidebar: React.FC = () => {
   };
 
   return (
-    <div className="w-64 bg-zinc-950 border-l border-zinc-800 flex flex-col h-full text-zinc-300 select-none z-10 shadow-xl">
+    <div className="w-64 shrink-0 bg-zinc-950 border-l border-zinc-800 flex flex-col h-full text-zinc-300 select-none z-10 shadow-xl">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-zinc-800 bg-zinc-900">
         <div className="flex items-center space-x-2">

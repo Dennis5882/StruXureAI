@@ -66,6 +66,7 @@ export const Workspace: React.FC = () => {
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
   const dragCounter = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [resizeTick, setResizeTick] = useState(0); // 영역 크기 변화 시 도면 재맞춤 트리거
 
   const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale, isLoadingFile, loadingMessage, gridSize } = useDrawingStore();
 
@@ -148,7 +149,7 @@ export const Workspace: React.FC = () => {
       }
     }
     canvas.requestRenderAll();
-  }, [gridSize]);
+  }, [gridSize, resizeTick]);
 
   // 🖼️ 배경 도면 이미지 렌더링 (캔버스에 맞춰 스케일)
   useEffect(() => {
@@ -172,7 +173,7 @@ export const Workspace: React.FC = () => {
       setBgScale(scale); // AI 폴리곤 좌표를 동일 스케일로 정합시키기 위해 저장
       canvas.requestRenderAll();
     });
-  }, [backgroundImage]);
+  }, [backgroundImage, resizeTick]);
 
   // 📐 DXF 지오메트리 렌더링 + 레이어 가시성 연동 (Phase 3)
   useEffect(() => {
@@ -285,7 +286,7 @@ export const Workspace: React.FC = () => {
     });
 
     canvas.requestRenderAll();
-  }, [dxfEntities, dxfLayers]);
+  }, [dxfEntities, dxfLayers, resizeTick]);
 
   // 🤖 AI 인식 폴리곤 렌더링 (반투명 오버레이)
   useEffect(() => {
@@ -311,7 +312,7 @@ export const Workspace: React.FC = () => {
     });
 
     canvas.requestRenderAll();
-  }, [aiPolygons, bgScale]);
+  }, [aiPolygons, bgScale, resizeTick]);
 
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
@@ -704,11 +705,18 @@ export const Workspace: React.FC = () => {
 
     const handleResize = () => {
       if (!containerRef.current) return;
-      canvas.setDimensions({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight });
+      const w = containerRef.current.clientWidth, h = containerRef.current.clientHeight;
+      if (w < 1 || h < 1) return;
+      if (canvas.getWidth() === w && canvas.getHeight() === h) return;
+      canvas.setDimensions({ width: w, height: h });
+      setResizeTick((t) => t + 1); // 도면/격자/배경 재맞춤 유도
     };
     window.addEventListener('resize', handleResize);
+    // 사이드바 열고/닫기 등 레이아웃 변화도 감지 (window resize 이벤트가 없으므로 ResizeObserver 사용)
+    const ro = new ResizeObserver(() => handleResize());
+    ro.observe(containerRef.current);
 
-    return () => { window.removeEventListener('resize', handleResize); canvas.dispose(); };
+    return () => { window.removeEventListener('resize', handleResize); ro.disconnect(); canvas.dispose(); };
   }, []);
 
   useEffect(() => {
