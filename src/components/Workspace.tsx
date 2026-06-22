@@ -228,6 +228,8 @@ export const Workspace: React.FC = () => {
     const scale = Math.min((canvas.getWidth() - pad * 2) / dxfW, (canvas.getHeight() - pad * 2) / dxfH);
     const tx = (x: number) => pad + (x - minX) * scale;
     const ty = (y: number) => pad + (maxY - y) * scale;
+    // 구조 부재 추출이 화면과 정확히 정합되도록 변환 파라미터 저장
+    useDrawingStore.getState().setDxfTransform({ scale, minX, maxY, pad });
 
     // 3) 엔티티 → Fabric 객체
     dxfEntities.forEach((e: any) => {

@@ -1,4 +1,70 @@
-import { StructureLineData, Point2D } from '../types/drawing';
+import { StructureLineData, Point2D, StructureType } from '../types/drawing';
+import { DxfTransform } from '../store/useDrawingStore';
+
+// 레이어명으로 구조 부재 종류 분류 (대만/동남아/한국 관례 키워드)
+const classifyLayer = (name: string): StructureType | null => {
+  const u = (name || '').toUpperCase();
+  if (/COL|기둥|柱/.test(u)) return 'COLUMN';
+  if (/WALL|옹벽|벽|墙|牆|RC/.test(u)) return 'WALL';
+  return null;
+};
+
+export interface ExtractResult {
+  members: StructureLineData[];
+  counts: { wall: number; column: number };
+  truncated: boolean;
+}
+
+/**
+ * 보이는 구조 레이어(벽/기둥)의 DXF 엔티티를 편집 가능한 구조 부재(StructureLineData)로 변환한다.
+ * - 좌표는 화면(캔버스) 좌표로 변환되어 렌더된 도면과 정확히 겹친다.
+ * - LINE/LWPOLYLINE/POLYLINE을 선분 단위로 추출 (ARC/원 등은 추후 보강).
+ */
+export const extractMembersFromDxf = (
+  entities: any[],
+  layers: { name: string; visible: boolean }[],
+  t: DxfTransform,
+  cap: number = 4000,
+): ExtractResult => {
+  const visible = new Map(layers.map((l) => [l.name, l.visible]));
+  const tx = (x: number) => t.pad + (x - t.minX) * t.scale;
+  const ty = (y: number) => t.pad + (t.maxY - y) * t.scale;
+  const members: StructureLineData[] = [];
+  let wall = 0, column = 0, idc = 0, truncated = false;
+
+  const push = (type: StructureType, a: any, b: any) => {
+    members.push({
+      id: `cad_${Date.now().toString(36)}_${idc++}`,
+      source: 'CAD',
+      type,
+      shape: 'line',
+      coordinates: [{ x: tx(a.x), y: ty(a.y) }, { x: tx(b.x), y: ty(b.y) }],
+      thickness: type === 'COLUMN' ? 2 : 3,
+      properties: { fromCad: true, layer: (a as any)._layer },
+    });
+  };
+
+  for (const e of entities) {
+    if (members.length >= cap) { truncated = true; break; }
+    const cls = classifyLayer(e.layer);
+    if (!cls) continue;
+    if (visible.get(e.layer) === false) continue; // 숨긴 레이어는 제외
+
+    const etype = (e.type || '').toUpperCase();
+    const before = members.length;
+
+    if (etype === 'LINE' && Array.isArray(e.vertices) && e.vertices.length >= 2) {
+      push(cls, e.vertices[0], e.vertices[1]);
+    } else if ((etype === 'LWPOLYLINE' || etype === 'POLYLINE') && Array.isArray(e.vertices) && e.vertices.length >= 2) {
+      for (let i = 0; i < e.vertices.length - 1; i++) push(cls, e.vertices[i], e.vertices[i + 1]);
+      if (e.shape === true || e.closed === true) push(cls, e.vertices[e.vertices.length - 1], e.vertices[0]);
+    }
+
+    if (members.length > before) { cls === 'WALL' ? wall++ : column++; }
+  }
+
+  return { members, counts: { wall, column }, truncated };
+};
 
 const getDistance = (p1: Point2D, p2: Point2D) => {
   return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));

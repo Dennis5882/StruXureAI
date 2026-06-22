@@ -8,6 +8,15 @@ export interface DxfLayer {
   color?: string;
 }
 
+// 📐 DXF → 캔버스 좌표 변환 파라미터 (구조 부재 추출 시 화면 정합용)
+//    canvasX = pad + (x - minX) * scale,  canvasY = pad + (maxY - y) * scale
+export interface DxfTransform {
+  scale: number;
+  minX: number;
+  maxY: number;
+  pad: number;
+}
+
 interface DrawingState {
   currentMode: DrawingMode;
   currentType: StructureType;
@@ -30,6 +39,7 @@ interface DrawingState {
   // 📐 DXF 레이어 / 사이드바 상태 (Phase 3)
   dxfLayers: DxfLayer[];
   dxfEntities: any[];
+  dxfTransform: DxfTransform | null;
   isSidebarOpen: boolean;
 
   // ⏳ 파일 로딩(DWG 변환 등) 상태
@@ -50,11 +60,13 @@ interface DrawingState {
 
   setDxfLayers: (layers: DxfLayer[]) => void;
   setDxfEntities: (entities: any[]) => void;
+  setDxfTransform: (t: DxfTransform | null) => void;
   toggleDxfLayer: (name: string) => void;
   toggleSidebar: () => void;
   setLoadingFile: (loading: boolean, message?: string) => void;
 
   addLine: (line: Omit<StructureLineData, 'id'> | StructureLineData) => void;
+  addLines: (lines: StructureLineData[]) => void;
   undoLine: () => void;
   updateLine: (id: string, updatedData: Partial<StructureLineData>) => void;
   deleteLine: (id: string) => void;
@@ -85,6 +97,7 @@ export const useDrawingStore = create<DrawingState>((set) => ({
 
   dxfLayers: [],
   dxfEntities: [],
+  dxfTransform: null,
   isSidebarOpen: false,
   isLoadingFile: false,
   loadingMessage: '',
@@ -103,6 +116,7 @@ export const useDrawingStore = create<DrawingState>((set) => ({
 
   setDxfLayers: (dxfLayers) => set({ dxfLayers }),
   setDxfEntities: (dxfEntities) => set({ dxfEntities }),
+  setDxfTransform: (dxfTransform) => set({ dxfTransform }),
   toggleDxfLayer: (name) => set((state) => ({
     dxfLayers: state.dxfLayers.map((layer) =>
       layer.name === name ? { ...layer, visible: !layer.visible } : layer
@@ -115,6 +129,7 @@ export const useDrawingStore = create<DrawingState>((set) => ({
     const newLine = { ...line, id: ('id' in line) ? line.id : `str_${Date.now()}_${Math.random().toString(36).substring(2, 9)}` } as StructureLineData;
     return { lines: [...state.lines, newLine] };
   }),
+  addLines: (newLines) => set((state) => ({ lines: [...state.lines, ...newLines] })),
   undoLine: () => set((state) => {
     if (state.lines.length === 0) return state;
     return { lines: state.lines.slice(0, -1) };

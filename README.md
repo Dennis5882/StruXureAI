@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.9.1** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.10.0** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -148,6 +148,7 @@ export interface StructureLineData {
 - **DXF 파싱 + 시각화 (Case A)**: 레이어 추출, 지오메트리(LINE/POLYLINE/CIRCLE/ARC/ELLIPSE/TEXT/MTEXT/**SPLINE**) 캔버스 렌더링
 - **블록/치수 렌더링**: **INSERT(블록 참조)** 를 블록 정의로 전개(중첩·배열·회전/축척 affine 변환), **DIMENSION(치수)** 익명 블록 전개, 블록 내 `0` 레이어는 INSERT 레이어 상속 → 그리드 헤드·기호·치수가 평면도에 표시됨
 - **레이어 매니저 사이드바**: 레이어 목록 표시, 가시성 토글, **구조 키워드 자동 필터링**(`S-`, `COL`, `WALL`, `CONC`, `기둥`, `옹벽`)
+- **CAD 구조 부재 추출(보기→구조화)**: 보이는 벽/기둥 레이어의 DXF 지오메트리를 **편집 가능한 구조 부재(WALL=빨강/COLUMN=파랑)** 로 변환. 렌더 도면과 픽셀 단위로 정합, 추출 후 선택·이동·정점편집·삭제 가능. (대만/동남아/한국 레이어 키워드: `WALL/COL/벽/기둥/柱/墙/牆/RC/옹벽`)
 - **파일 업로드**: 첨부 버튼 + **드래그앤드롭** (이미지/CAD 모두 지원)
 - **DWG 직접 열기**: 바이너리 DWG를 브라우저에서 LibreDWG(WASM)로 DXF 변환 후 렌더링 (백엔드 불필요, WASM은 DWG 열 때만 동적 로드)
 - **버전 표시**: 화면 우측 하단에 버전/개발자/빌드일/커밋 자동 표기
@@ -166,6 +167,11 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-23 — v0.10.0
+- ✨ **CAD 구조 부재 추출** — 사이드바 "구조 부재 추출" 버튼. 보이는 벽/기둥 레이어의 DXF 엔티티(LINE/LWPOLYLINE/POLYLINE)를 편집 가능한 구조 부재로 변환(레이어 키워드로 WALL/COLUMN 분류). DXF→캔버스 변환 좌표를 스토어에 노출해 렌더 도면과 정확히 정합. 추출 후 SELECT 모드로 전환
+- 🔍 검증(Playwright): 실제 B1F → 벽 314개·기둥 91개(선분 570: 빨강 329 + 파랑 241) 추출, 스크린샷에서 빨강/파랑 부재가 CAD 선 위에 정확히 정합, 에러 0
+- 📚 docs/MODULES.md: OSS 조사 갱신(mlightcad/cad-viewer로 DWG 렌더 보강 가능, 벡터 심볼스포팅·ArchCAD/FloorPlanCAD은 academic 라이선스)
 
 ### 2026-06-23 — v0.9.1
 - 🐞 **툴바 축척 입력칸(1px=) 값이 잘리던 문제 수정** — 입력 너비 `w-8`(32px) → `w-14`(56px)로 확대
