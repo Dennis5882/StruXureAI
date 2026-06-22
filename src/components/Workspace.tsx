@@ -119,6 +119,7 @@ export const Workspace: React.FC = () => {
         originX: 'center', originY: 'center',
       });
       (obj as any).id = line.id;
+      obj.setCoords();
       canvas.add(obj);
       hasChanged = true;
     });
@@ -361,7 +362,6 @@ export const Workspace: React.FC = () => {
     let draggingVertex = false;
     let vertexDrag: { id: string; index: number } | null = null; // 끝점 드래그 중
     let lineMove: { id: string; sx: number; sy: number; coords: Point2D[] } | null = null; // 선 전체 이동 중(시작 기준)
-    let shapeMove: { id: string; obj: any; objX0: number; objY0: number; sx: number; sy: number; coords0: Point2D[] } | null = null; // 사각형/원/삼각형 이동
 
     const lineColorMap: Record<string, string> = { WALL: '#ef4444', COLUMN: '#3b82f6', BEAM: '#22c55e', CENTER_LINE: '#f59e0b' };
 
@@ -406,6 +406,7 @@ export const Workspace: React.FC = () => {
         originX: 'center', originY: 'center', selectable: false, evented: false, hasControls: false,
       });
       (obj as any).id = id;
+      obj.setCoords();
       canvas.add(obj);
       vHandles.forEach((h) => canvas.bringObjectToFront(h));
     };
@@ -423,7 +424,9 @@ export const Workspace: React.FC = () => {
         return;
       }
 
-      // 🎯 선택 모드: fabric RC의 히트 판정이 불안정 → 모든 도형을 기하적으로 직접 처리
+      // 🎯 선택 모드
+      //  - 사각형/원/삼각형: fabric 네이티브 선택(이동·크기조절·회전). setCoords로 히트영역 정상화됨
+      //  - 선(LINE): fabric 박스 히트가 부정확하고 정점 편집이 필요해 기하적으로 직접 처리
       if (mode === 'SELECT') {
         const p = canvas.getPointer(opt.e);
         const z = canvas.getZoom();
@@ -441,35 +444,24 @@ export const Workspace: React.FC = () => {
           }
         }
 
-        // 2) 포인터가 닿는 도형 탐색 (나중에 그린 것이 위 → 뒤에서부터)
-        let hit: typeof state.lines[number] | null = null;
-        for (let i = state.lines.length - 1; i >= 0; i--) {
-          const ln = state.lines[i];
-          if (ln.coordinates.length < 2) continue;
-          const [c0, c1] = ln.coordinates;
-          const shp = ln.shape || 'line';
-          let ok = false;
-          if (shp === 'line') ok = distToSegment(p, c0, c1) <= tol;
-          else if (shp === 'circle') { const r = Math.hypot(c1.x - c0.x, c1.y - c0.y); ok = Math.hypot(p.x - c0.x, p.y - c0.y) <= r + tol; }
-          else ok = p.x >= Math.min(c0.x, c1.x) - tol && p.x <= Math.max(c0.x, c1.x) + tol && p.y >= Math.min(c0.y, c1.y) - tol && p.y <= Math.max(c0.y, c1.y) + tol;
-          if (ok) { hit = ln; break; }
+        // 2) fabric이 도형(선 아님)을 잡았으면 네이티브 처리에 위임
+        const tgt = opt.target as any;
+        if (tgt && !tgt.isGrid && !tgt.isVertexHandle && tgt.type !== 'line') { clearVHandles(); return; }
+
+        // 3) 최근접 선 탐색 → 끝점 핸들 표시 + 전체 이동
+        let bestId: string | null = null; let best = Infinity;
+        for (const ln of state.lines) {
+          if ((ln.shape || 'line') !== 'line' || ln.coordinates.length < 2) continue;
+          const dd = distToSegment(p, ln.coordinates[0], ln.coordinates[1]);
+          if (dd < best) { best = dd; bestId = ln.id; }
         }
-
-        if (!hit) { clearVHandles(); canvas.discardActiveObject(); canvas.requestRenderAll(); return; }
-
-        if ((hit.shape || 'line') === 'line') {
-          // 선: 끝점 핸들 표시 + 전체 이동
-          const obj = canvas.getObjects().find((o: any) => o.id === hit!.id && o.type === 'line');
+        if (bestId && best <= tol) {
+          const obj = canvas.getObjects().find((o: any) => o.id === bestId && o.type === 'line');
           if (obj) showVHandles(obj);
-          lineMove = { id: hit.id, sx: p.x, sy: p.y, coords: hit.coordinates.map((c) => ({ ...c })) };
+          const d = state.lines.find((l) => l.id === bestId)!;
+          lineMove = { id: bestId, sx: p.x, sy: p.y, coords: d.coordinates.map((c) => ({ ...c })) };
         } else {
-          // 사각형/원/삼각형: fabric 객체를 직접 평행이동
-          clearVHandles();
-          const obj = canvas.getObjects().find((o: any) => o.id === hit!.id && o.type !== 'line');
-          if (obj) {
-            shapeMove = { id: hit.id, obj, objX0: (obj as any).left, objY0: (obj as any).top, sx: p.x, sy: p.y, coords0: hit.coordinates.map((c) => ({ ...c })) };
-            canvas.setActiveObject(obj as any); canvas.requestRenderAll();
-          }
+          clearVHandles(); canvas.discardActiveObject(); canvas.requestRenderAll();
         }
         return;
       }
@@ -573,22 +565,6 @@ export const Workspace: React.FC = () => {
         return;
       }
 
-      // ✏️ 사각형/원/삼각형 평행이동 (fabric 객체 직접 이동 + 스토어 갱신, 격자 스냅)
-      if (shapeMove) {
-        const st = useDrawingStore.getState();
-        const p = canvas.getPointer(opt.e);
-        const g = st.gridSize;
-        let nl = shapeMove.objX0 + (p.x - shapeMove.sx);
-        let nt = shapeMove.objY0 + (p.y - shapeMove.sy);
-        if (g > 0) { nl = snapTo(nl, g); nt = snapTo(nt, g); }
-        const adx = nl - shapeMove.objX0, ady = nt - shapeMove.objY0;
-        shapeMove.obj.set({ left: nl, top: nt }); shapeMove.obj.setCoords();
-        const coords = shapeMove.coords0.map((c) => ({ x: c.x + adx, y: c.y + ady }));
-        st.updateLine(shapeMove.id, { coordinates: coords });
-        canvas.requestRenderAll();
-        return;
-      }
-
       if (!isDrawing || !currentShape || !currentText) return;
       const state = useDrawingStore.getState();
       const pointer = canvas.getPointer(opt.e);
@@ -650,6 +626,9 @@ export const Workspace: React.FC = () => {
       const endX = snapTo(pointer.x, state.gridSize);
       const endY = snapTo(pointer.y, state.gridSize);
 
+      // ⭐ 히트판정용 좌표(aCoords) 갱신 — 누락 시 fabric findTarget이 도형을 못 잡음
+      currentShape.setCoords();
+
       state.addLine({
         id: objId,
         source: 'MANUAL', type: state.currentType,
@@ -657,7 +636,7 @@ export const Workspace: React.FC = () => {
         coordinates: [{ x: startX, y: startY }, { x: endX, y: endY }],
         thickness: 4,
       });
-      
+
       currentShape = null;
       currentText = null;
     });
@@ -701,7 +680,7 @@ export const Workspace: React.FC = () => {
     canvas.on('selection:created', onSelect);
     canvas.on('selection:updated', onSelect);
     canvas.on('selection:cleared', () => { if (!draggingVertex && !lineMove) clearVHandles(); });
-    canvas.on('mouse:up', () => { draggingVertex = false; vertexDrag = null; lineMove = null; shapeMove = null; });
+    canvas.on('mouse:up', () => { draggingVertex = false; vertexDrag = null; lineMove = null; });
 
     const handleResize = () => {
       if (!containerRef.current) return;

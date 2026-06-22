@@ -4,7 +4,7 @@
 > 이 문서는 살아있는 체크리스트다. GitHub에서 후보를 찾으면 표의 "후보/링크"에 적고,
 > 완성도·라이선스·연결난이도를 채워 넣은 뒤 ✅로 결정한다.
 >
-> 기준 버전: v0.8.2 · 최종 갱신: 2026-06-22
+> 기준 버전: v0.9.0 · 최종 갱신: 2026-06-23
 
 ---
 
@@ -21,21 +21,22 @@
 
 ---
 
-## 1. 편집 캔버스 엔진 ⚠️ 최우선
+## 1. 편집 캔버스 엔진 ✅ 해결 (fabric 유지)
 
 - **역할**: 그리기·선택·이동·정점편집·줌/팬·스냅. 모든 기능의 토대.
-- **현재 상태**: `fabric.js 6.0.0-rc.1`(릴리스 후보). `findTarget`이 얇은 선·도형을 못 잡는 버그 →
-  선택/이동/정점편집을 모두 기하적으로 직접 구현 중([Workspace.tsx](../src/components/Workspace.tsx)).
-- **방향**: ① fabric 정식(6.x stable)로 업그레이드해 RC 버그만 해소되는지 1차 확인 →
-  ② 안 되면 **Konva.js로 전환**(히트 판정 정확, React 바인딩 성숙).
+- **결론(v0.9.0)**: 엔진 교체 불필요. 클릭 선택이 안 되던 원인은 RC 버그가 아니라
+  **그리기 후 `setCoords()` 누락**으로 히트영역(`aCoords`)이 0×0에 멈춘 것이었다.
+  (실제 설치 버전은 fabric **6.9.1 정식**, MIT.) 수정 후:
+  - 사각형/원/삼각형 = fabric **네이티브** 선택·이동·크기조절·회전
+  - 선(LINE) = 기하 처리(정점 편집) 유지 — 얇은 선은 박스 히트가 부정확 + 끝점 편집 UX가 더 좋음
+- **남은 옵션(필요 시)**: fabric 7.x 검토, 또는 대규모 도면 성능이 문제되면 Konva 재검토.
 
 | 후보 | 검색어 / 링크 | 완성도 | 라이선스 | 연결난이도 | 비고 |
 |---|---|---|---|---|---|
-| fabric.js 6.x stable | `fabricjs/fabric.js` |  |  | 낮음 | 현재 코드 거의 유지, 버전만 ↑ |
-| **Konva** ⭐ | `konvajs/konva`, `konvajs/react-konva` |  |  | 중간 | 캔버스 추상화 교체 |
-| Paper.js | `paperjs/paper.js` |  |  | 중간 | 벡터/패스 연산 강점 |
-| (참고)tldraw | `tldraw/tldraw` |  |  | 높음 | 무한캔버스 SDK, 통째론 무거움 |
-| (참고)Excalidraw | `excalidraw/excalidraw` |  |  | 높음 | 손그림 UX 참고용 |
+| **fabric.js 6.9.1 (현행)** ✅ | `fabricjs/fabric.js` | 성숙 | MIT | — | 현재 사용. setCoords 수정으로 네이티브 편집 정상 |
+| fabric.js 7.x | `fabricjs/fabric.js` |  | MIT | 낮음 | 메이저 업글(필요 시) |
+| (대안)Konva | `konvajs/konva`, `konvajs/react-konva` |  |  | 중간 | 성능/대형 도면 이슈 시 |
+| (참고)tldraw / Excalidraw | `tldraw/tldraw`, `excalidraw/excalidraw` |  |  | 높음 | UX 참고용 |
 
 ---
 
@@ -117,8 +118,8 @@
 
 ## 추천 진행 순서
 
-1. **캔버스 엔진 정리** — fabric 정식 업그레이드 시도 → 안 되면 Konva 전환. (토대부터 안정화)
-2. **AI 인식** — onnxruntime-web + YOLO-seg ONNX로 백엔드 없이 시도. 막히면 호스팅(Replicate).
+1. ~~**캔버스 엔진 정리**~~ ✅ 완료(v0.9.0) — fabric 6.9.1 유지, setCoords 수정으로 네이티브 편집 복원.
+2. **AI 인식** ← 다음 — onnxruntime-web + YOLO-seg ONNX로 백엔드 없이 시도. 막히면 호스팅(Replicate).
 3. **지오메트리** — flatten-js + Clipper로 중심선/오프셋 고도화.
 4. **이미지 전처리(opencv.js)** → **내보내기** 순.
 
