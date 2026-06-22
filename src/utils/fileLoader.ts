@@ -155,7 +155,13 @@ const loadDwg = async (file: File) => {
     parseDxfText(text);
   } catch (err) {
     console.error('[StruXureAI] DWG 로드 실패', err);
-    alert('DWG 파일을 여는 데 실패했습니다. (지원되지 않는 버전이거나 손상된 파일일 수 있습니다)');
+    // 동적 import(청크) 로드 실패 = 새 배포 후 예전 페이지에 남은 경우 → 새로고침 안내
+    const msg = String((err as any)?.message || err);
+    if (/dynamically imported module|Failed to fetch|importing|chunk|preload/i.test(msg)) {
+      alert('새 버전이 배포되어 변환 모듈을 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.');
+    } else {
+      alert('DWG 파일을 여는 데 실패했습니다. (지원되지 않는 버전이거나 손상된 파일일 수 있습니다)');
+    }
   } finally {
     store.setLoadingFile(false);
   }

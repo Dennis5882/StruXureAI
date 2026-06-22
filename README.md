@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.8.2** · 검증일: **2026-06-22** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.8.3** · 검증일: **2026-06-22** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -166,6 +166,10 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-22 — v0.8.3
+- 🐞 **재배포 후 DWG 열기 실패(stale chunk) 수정** — 새 배포로 청크 해시가 바뀌면 예전 페이지가 DWG 변환용 LibreDWG 청크를 동적 import할 때 404로 실패하던 문제. `vite:preloadError` 감지 시 세션당 1회 자동 새로고침 + 실패 메시지를 새로고침 안내로 개선
+  - 참고: 코드 회귀 아님(로컬 빌드에선 정상). 배포/캐시 타이밍 이슈
 
 ### 2026-06-22 — v0.8.2
 - 📊 **Vercel Web Analytics(방문자 분석) 연동** — `@vercel/analytics`의 `<Analytics />`를 App에 추가 (배포 환경에서만 방문/페이지뷰 수집)
