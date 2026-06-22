@@ -15,14 +15,17 @@ export const Toolbar: React.FC = () => {
     setMode, setType, setUnit, setScaleRatio, undoLine, addLine, setAiPolygons, setIsAnalyzing, toggleSidebar, setGridSize
   } = useDrawingStore();
 
-  // 🪄 벽체 쌍에서 중심선 자동 생성
+  // 🪄 벽체 쌍에서 중심선 자동 생성 (CAD 추출 벽은 px=mm×scale 이므로 두께 임계값을 scale로 환산)
   const handleGenerateCenterLines = () => {
-    const centers = extractCenterLinesFromWalls(lines);
+    const s = useDrawingStore.getState().dxfTransform?.scale ?? 1;
+    // 실무 벽두께 약 60~600mm 범위를 캔버스 px로 변환 (수동 벽은 s=1로 적당한 px 범위)
+    const centers = extractCenterLinesFromWalls(lines, 60 * s, 600 * s);
     if (centers.length === 0) {
-      alert('중심선을 생성할 벽체(WALL) 쌍을 찾지 못했습니다. 마주보는 벽 두 개를 먼저 그려주세요.');
+      alert('중심선을 생성할 벽체(WALL) 쌍을 찾지 못했습니다.\nCAD라면 먼저 "구조 부재 추출"로 벽을 가져오거나, 마주보는 벽 두 개를 그려주세요.');
       return;
     }
     centers.forEach((c) => addLine(c));
+    alert(`중심선 ${centers.length}개 생성 완료`);
   };
 
   const modes: { id: DrawingMode; label: string; icon: React.ReactNode }[] = [

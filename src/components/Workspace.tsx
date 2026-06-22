@@ -108,16 +108,35 @@ export const Workspace: React.FC = () => {
         .map((id: string) => id.replace('_text', ''))
     );
     const colorMap: Record<string, string> = { WALL: '#ef4444', COLUMN: '#3b82f6', BEAM: '#22c55e', CENTER_LINE: '#f59e0b' };
+    const selMode = useDrawingStore.getState().currentMode === 'SELECT';
     lines.forEach((line) => {
       if (existingIds.has(line.id) || line.coordinates.length < 2) return;
       const [a, b] = line.coordinates;
-      const obj = new fabric.Line([a.x, a.y, b.x, b.y], {
-        stroke: colorMap[line.type] || '#ffffff',
-        strokeWidth: line.thickness || 2,
-        // 선은 fabric 히트가 불안정 → 항상 비활성, 선택/이동/정점편집은 기하적으로 직접 처리
-        selectable: false, evented: false, hasControls: false,
-        originX: 'center', originY: 'center',
-      });
+      const color = colorMap[line.type] || '#ffffff';
+      let obj: fabric.Object;
+      if (line.shape === 'rect') {
+        // 사각형(기둥 등): fabric 네이티브 선택/이동/크기조절
+        obj = new fabric.Rect({
+          left: Math.min(a.x, b.x), top: Math.min(a.y, b.y),
+          width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y),
+          stroke: color, strokeWidth: line.thickness || 2, fill: 'transparent',
+          selectable: selMode, evented: selMode,
+        });
+      } else if (line.shape === 'circle') {
+        obj = new fabric.Circle({
+          left: a.x, top: a.y, radius: Math.hypot(b.x - a.x, b.y - a.y),
+          originX: 'center', originY: 'center',
+          stroke: color, strokeWidth: line.thickness || 2, fill: 'transparent',
+          selectable: selMode, evented: selMode,
+        });
+      } else {
+        // 선: fabric 히트가 불안정 → 항상 비활성, 선택/이동/정점편집은 기하적으로 직접 처리
+        obj = new fabric.Line([a.x, a.y, b.x, b.y], {
+          stroke: color, strokeWidth: line.thickness || 2,
+          selectable: false, evented: false, hasControls: false,
+          originX: 'center', originY: 'center',
+        });
+      }
       (obj as any).id = line.id;
       obj.setCoords();
       canvas.add(obj);
