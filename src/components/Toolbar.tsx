@@ -126,7 +126,7 @@ export const Toolbar: React.FC = () => {
           </select>
           <div className="w-px h-3 bg-zinc-700 mx-1"></div>
           <span className="text-zinc-500">1px=</span>
-          <input type="number" value={scaleRatio} onChange={(e) => setScaleRatio(Number(e.target.value) || 1)} className="w-8 bg-zinc-800 text-zinc-200 px-1 py-0.5 rounded outline-none text-center appearance-none"/>
+          <input type="number" value={scaleRatio} onChange={(e) => setScaleRatio(Number(e.target.value) || 1)} className="w-14 bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded outline-none text-center appearance-none"/>
         </div>
 
         <button onClick={undoLine} disabled={lines.length === 0} className={`p-1.5 rounded-md transition-colors ${lines.length === 0 ? 'text-zinc-700' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'}`}><Undo2 size={16} /></button>

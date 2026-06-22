@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.9.0** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.9.1** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -166,6 +166,9 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-23 — v0.9.1
+- 🐞 **툴바 축척 입력칸(1px=) 값이 잘리던 문제 수정** — 입력 너비 `w-8`(32px) → `w-14`(56px)로 확대
 
 ### 2026-06-23 — v0.9.0
 - 🐞 **도형 히트판정 근본 원인 수정** — 그리기 후 `setCoords()` 누락으로 fabric의 히트영역(`aCoords`)이 0×0에 멈춰 클릭 선택이 안 됐음(이전 "RC 버그" 진단은 부정확했고 실제 설치 버전은 fabric **6.9.1 정식**이었음). 그리기 완료/객체 생성 시 `setCoords()` 호출로 해결
