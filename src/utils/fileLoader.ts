@@ -10,6 +10,91 @@ const aciToHex: Record<number, string> = {
 
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
 
+// ── 2D affine 변환 (INSERT 블록 전개용) ────────────────────────────────
+// 행렬 [a,b,c,d,e,f]:  x' = a·x + c·y + e ,  y' = b·x + d·y + f
+type Mat = [number, number, number, number, number, number];
+const deg2rad = (d: number) => (d * Math.PI) / 180;
+// m1 ∘ m2 (m2를 먼저 적용한 뒤 m1 적용)
+const mul = (m1: Mat, m2: Mat): Mat => [
+  m1[0] * m2[0] + m1[2] * m2[1],
+  m1[1] * m2[0] + m1[3] * m2[1],
+  m1[0] * m2[2] + m1[2] * m2[3],
+  m1[1] * m2[2] + m1[3] * m2[3],
+  m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
+  m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
+];
+const translate = (x: number, y: number): Mat => [1, 0, 0, 1, x, y];
+const scaleM = (sx: number, sy: number): Mat => [sx, 0, 0, sy, 0, 0];
+const rotateM = (rad: number): Mat => {
+  const c = Math.cos(rad), s = Math.sin(rad);
+  return [c, s, -s, c, 0, 0];
+};
+const applyPt = (m: Mat, p: any) => ({ ...p, x: m[0] * p.x + m[2] * p.y + m[4], y: m[1] * p.x + m[3] * p.y + m[5] });
+// 평행이동 제외 (벡터 변환: 타원 장축 등)
+const applyVec = (m: Mat, p: any) => ({ ...p, x: m[0] * p.x + m[2] * p.y, y: m[1] * p.x + m[3] * p.y });
+const matScale = (m: Mat) => Math.hypot(m[0], m[1]);
+const matRot = (m: Mat) => Math.atan2(m[1], m[0]);
+
+// 좌표를 가진 엔티티를 행렬로 변환한 복제본 반환
+const transformEntity = (e: any, m: Mat): any => {
+  const sc = matScale(m);
+  const rot = matRot(m);
+  const out: any = { ...e };
+  if (Array.isArray(e.vertices)) out.vertices = e.vertices.map((v: any) => applyPt(m, v));
+  if (e.center) out.center = applyPt(m, e.center);
+  if (typeof e.radius === 'number') out.radius = e.radius * sc;
+  if (e.startPoint) out.startPoint = applyPt(m, e.startPoint);
+  if (e.endPoint) out.endPoint = applyPt(m, e.endPoint);
+  if (e.position) out.position = applyPt(m, e.position);
+  if (e.controlPoints) out.controlPoints = e.controlPoints.map((p: any) => applyPt(m, p));
+  if (e.fitPoints) out.fitPoints = e.fitPoints.map((p: any) => applyPt(m, p));
+  if (e.majorAxisEndPoint) out.majorAxisEndPoint = applyVec(m, e.majorAxisEndPoint);
+  // 호/타원 각도에 회전량 더함 (라디안 가정; 도 단위면 Workspace의 toRad가 보정)
+  if (typeof e.startAngle === 'number') out.startAngle = e.startAngle + rot;
+  if (typeof e.endAngle === 'number') out.endAngle = e.endAngle + rot;
+  return out;
+};
+
+// INSERT(블록 참조)/DIMENSION을 블록 정의 엔티티로 펼친다 (중첩 블록은 재귀).
+// blocks: 이름→{ position(기준점), entities }
+const expandEntities = (entities: any[], blocks: Record<string, any>, parent: Mat, inheritLayer: string | undefined, depth: number): any[] => {
+  if (depth > 12) return []; // 순환/과도한 중첩 방어
+  const out: any[] = [];
+  for (const e of entities) {
+    const type = (e.type || '').toUpperCase();
+    if (type === 'INSERT' && e.name && blocks[e.name]) {
+      const blk = blocks[e.name];
+      const base = blk.position || { x: 0, y: 0 };
+      const pos = e.position || { x: 0, y: 0 };
+      const sx = e.xScale ?? 1, sy = e.yScale ?? 1;
+      const rot = deg2rad(e.rotation ?? 0);
+      const cols = Math.max(1, e.columnCount ?? 1), rows = Math.max(1, e.rowCount ?? 1);
+      const cspac = e.columnSpacing ?? 0, rspac = e.rowSpacing ?? 0;
+      const childLayer = e.layer && e.layer !== '0' ? e.layer : inheritLayer;
+      for (let ci = 0; ci < cols; ci++) {
+        for (let ri = 0; ri < rows; ri++) {
+          // T(insert) · R(rot) · T(셀오프셋) · S(scale) · T(-기준점)
+          let m = translate(pos.x, pos.y);
+          m = mul(m, rotateM(rot));
+          if (cspac || rspac) m = mul(m, translate(ci * cspac, ri * rspac));
+          m = mul(m, scaleM(sx, sy));
+          m = mul(m, translate(-base.x, -base.y));
+          out.push(...expandEntities(blk.entities || [], blocks, mul(parent, m), childLayer, depth + 1));
+        }
+      }
+    } else if (type === 'DIMENSION' && e.block && blocks[e.block]) {
+      // 치수는 익명 블록(*D…)에 실제 선/문자가 들어있음 (이미 월드 좌표)
+      out.push(...expandEntities(blocks[e.block].entities || [], blocks, parent, e.layer ?? inheritLayer, depth + 1));
+    } else {
+      const te = depth === 0 ? e : transformEntity(e, parent);
+      // 블록 내 '0' 레이어 엔티티는 INSERT의 레이어를 상속 (CAD 관례)
+      if (inheritLayer && (!te.layer || te.layer === '0')) te.layer = inheritLayer;
+      out.push(te);
+    }
+  }
+  return out;
+};
+
 // DXF 텍스트 → 스토어(레이어/엔티티) 적용. DXF·DWG 변환본이 공유.
 const parseDxfText = (text: string) => {
   const store = useDrawingStore.getState();
@@ -24,7 +109,11 @@ const parseDxfText = (text: string) => {
     color: aciToHex[layerTable[name].color] || '#d4d4d8',
   }));
 
-  const entities = Array.isArray(dxf.entities) ? dxf.entities : [];
+  const rawEntities = Array.isArray(dxf.entities) ? dxf.entities : [];
+  // INSERT(블록)/DIMENSION을 실제 도형으로 전개 → 평면도가 비어 보이던 문제 해결
+  const blocks = (dxf.blocks || {}) as Record<string, any>;
+  const entities = expandEntities(rawEntities, blocks, [1, 0, 0, 1, 0, 0], undefined, 0);
+
   const known = new Set(layers.map((l) => l.name));
   entities.forEach((e: any) => {
     if (e.layer && !known.has(e.layer)) {

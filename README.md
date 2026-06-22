@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.6.0** · 검증일: **2026-06-22** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.7.0** · 검증일: **2026-06-22** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -143,7 +143,8 @@ export interface StructureLineData {
 - **지우개(DELETE) 모드**: 클릭한 객체 삭제 (얇은 선은 선분 거리 기반으로 탐색)
 - **중심선 자동 생성**: 마주보는 벽체(WALL) 쌍에서 중심선 자동 추출 (`extractCenterLinesFromWalls`)
 - **AI 인식 (Case B)**: 이미지 업로드 → AI 폴리곤 수신 → `fabric.Polygon` 반투명 오버레이 렌더링, **배경 이미지 스케일에 좌표 정합**
-- **DXF 파싱 + 시각화 (Case A)**: 레이어 추출, 지오메트리(LINE/POLYLINE/CIRCLE/**ARC/ELLIPSE/TEXT/MTEXT**) 캔버스 렌더링
+- **DXF 파싱 + 시각화 (Case A)**: 레이어 추출, 지오메트리(LINE/POLYLINE/CIRCLE/ARC/ELLIPSE/TEXT/MTEXT/**SPLINE**) 캔버스 렌더링
+- **블록/치수 렌더링**: **INSERT(블록 참조)** 를 블록 정의로 전개(중첩·배열·회전/축척 affine 변환), **DIMENSION(치수)** 익명 블록 전개, 블록 내 `0` 레이어는 INSERT 레이어 상속 → 그리드 헤드·기호·치수가 평면도에 표시됨
 - **레이어 매니저 사이드바**: 레이어 목록 표시, 가시성 토글, **구조 키워드 자동 필터링**(`S-`, `COL`, `WALL`, `CONC`, `기둥`, `옹벽`)
 - **파일 업로드**: 첨부 버튼 + **드래그앤드롭** (이미지/CAD 모두 지원)
 - **DWG 직접 열기**: 바이너리 DWG를 브라우저에서 LibreDWG(WASM)로 DXF 변환 후 렌더링 (백엔드 불필요, WASM은 DWG 열 때만 동적 로드)
@@ -158,12 +159,19 @@ export interface StructureLineData {
 - **AI 추론 서버(YOLOv8-seg)**: 프론트 연동(`VITE_AI_API_URL`)은 준비됨, 실제 모델/서버는 미구축 (현재 목 데이터)
 - **그리드 스냅(Grid Snap)**: 상태값(`gridSize`)만 존재, 스냅 로직/UI 없음
 - **정점(Vertex) 편집 및 AI 가이드 하이브리드 보정**: 수동 객체는 SELECT 모드에서 이동/삭제는 되나 정점 편집은 미구현, AI 폴리곤은 비편집(가이드 표시 전용)
-- **DXF/DWG 일부 엔티티**: INSERT(블록 참조), DIMENSION(치수선), HATCH(해치), SPLINE 미렌더링 (블록으로 그려진 가구·기호 등은 표시되지 않음)
+- **DXF/DWG 일부 엔티티**: **HATCH(해치 채움)** 미렌더링. SPLINE은 맞춤점/제어점 폴리라인 근사(정밀 NURBS 평가 아님), DIMENSION은 익명 블록이 없는 경우 미표시
 - **이미지 전처리**(원근 보정/이진화), **데이터 내보내기/DB 연동**, **Phase 4 최적화**
 
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-22 — v0.7.0
+- ✨ **INSERT(블록) 렌더링** — 블록 참조를 블록 정의 엔티티로 전개. 2D affine 변환(축척·회전·기준점)으로 위치 계산, 중첩 블록 재귀(최대 12단계), MINSERT 배열(행/열 간격) 대응, 블록 내 `0` 레이어는 INSERT 레이어 상속
+- ✨ **DIMENSION(치수) 렌더링** — 치수 익명 블록(`*D…`)을 전개해 치수선/문자 표시
+- ✨ **SPLINE 렌더링** — 맞춤점/제어점을 폴리라인으로 근사
+- 🔍 검증(Playwright): 실제 `B1F 1.dwg` → **그리드 헤드 원형 심볼이 표시됨**(이전엔 텍스트만), 레이어 11개·캔버스 ink 6.6%·에러 0
+- ⚠️ 남은 한계: HATCH(해치 채움) 미렌더링
 
 ### 2026-06-22 — v0.6.0
 - ✨ **DWG 직접 열기** — LibreDWG(WASM)로 브라우저에서 DWG→DXF 변환 후 렌더링 (백엔드 불필요)

@@ -171,6 +171,9 @@ export const Workspace: React.FC = () => {
         acc(e.center.x - m, e.center.y - m);
         acc(e.center.x + m, e.center.y + m);
       }
+      // SPLINE 제어점/맞춤점
+      if (Array.isArray(e.controlPoints)) e.controlPoints.forEach((p: any) => acc(p.x, p.y));
+      if (Array.isArray(e.fitPoints)) e.fitPoints.forEach((p: any) => acc(p.x, p.y));
       // TEXT/MTEXT 등 위치점
       if (e.startPoint) acc(e.startPoint.x, e.startPoint.y);
       if (e.position) acc(e.position.x, e.position.y);
@@ -214,6 +217,13 @@ export const Workspace: React.FC = () => {
         const pts = ellipsePoints(e.center.x, e.center.y, e.majorAxisEndPoint, e.axisRatio ?? 1, e.startAngle ?? 0, e.endAngle ?? Math.PI * 2)
           .map((p) => ({ x: tx(p.x), y: ty(p.y) }));
         obj = new fabric.Polyline(pts, { ...base, objectCaching: false });
+      } else if (type === 'SPLINE') {
+        // 정밀 NURBS 평가 대신 맞춤점/제어점을 잇는 폴리라인으로 근사
+        const src = (Array.isArray(e.fitPoints) && e.fitPoints.length >= 2) ? e.fitPoints : e.controlPoints;
+        if (Array.isArray(src) && src.length >= 2) {
+          const pts = src.map((p: any) => ({ x: tx(p.x), y: ty(p.y) }));
+          obj = new fabric.Polyline(pts, { ...base, objectCaching: false });
+        }
       } else if (type === 'TEXT' || type === 'MTEXT') {
         const pos = e.startPoint || e.position;
         const raw = (e.text || '').replace(/\\[A-Za-z][^;]*;|[{}]/g, '').trim(); // MTEXT 포맷 코드 간이 제거
