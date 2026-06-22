@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.8.1** · 검증일: **2026-06-22** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.8.2** · 검증일: **2026-06-22** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -166,6 +166,9 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-22 — v0.8.2
+- 📊 **Vercel Web Analytics(방문자 분석) 연동** — `@vercel/analytics`의 `<Analytics />`를 App에 추가 (배포 환경에서만 방문/페이지뷰 수집)
 
 ### 2026-06-22 — v0.8.1
 - 🐞 **레이어 사이드바가 화면 밖으로 밀려나던 문제 수정** — 캔버스 영역 `min-w-0`(축소 허용) + 사이드바 `shrink-0`(폭 고정). fabric 캔버스 컨테이너(1280px, relative)가 flex 영역을 강제로 넓혀 사이드바가 오른쪽 밖으로 사라지던 현상 해결

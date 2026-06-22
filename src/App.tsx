@@ -1,4 +1,5 @@
 import React from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import { Toolbar } from './components/Toolbar';
 import { Workspace } from './components/Workspace';
 import { LayerSidebar } from './components/LayerSidebar';
@@ -12,10 +13,12 @@ function App() {
         <div className="flex-1 relative min-w-0">
           <Workspace />
         </div>
-        
+
         {/* 우측 레이어 패널 (Phase 3) */}
         <LayerSidebar />
       </div>
+      {/* 📊 Vercel 방문자 분석 (배포 환경에서만 데이터 수집) */}
+      <Analytics />
     </div>
   );
 }
