@@ -48,11 +48,13 @@
 
 | 후보 | 검색어 / 링크 | 완성도 | 라이선스 | 연결난이도 | 비고 |
 |---|---|---|---|---|---|
-| libredwg-web 생태계 | `mlightcad/libredwg-web` 및 동일 저자 뷰어 |  |  | 낮음 | 이미 사용 중, 뷰어 컴포넌트 확인 |
-| three-dxf | `gdsestimating/three-dxf`, `prolincur/three-dxf-loader` |  |  | 중간 | three.js 렌더 위임 |
-| dxf (SVG 변환) | npm `dxf` (`bjnortier/dxf`) |  |  | 중간 | HATCH 등 폭넓음, SVG 출력 |
+| **mlightcad/cad-viewer** ⭐⭐ | `mlightcad/cad-viewer`, `@mlightcad/cad-simple-viewer` | 높음(활발) | (확인필요, MIT 계열로 보임) | 중간 | **브라우저 전용 DWG/DXF 뷰어·에디터.** HATCH·전체 엔티티·대용량 성능(Three.js 배치/인스턴싱). 코어(`cad-simple-viewer`)는 **프레임워크 무관(React 사용 가능)**. 우리가 쓰는 libredwg-web 저자가 만든 상위 생태계 |
+| libredwg-web (현행) | `mlightcad/libredwg-web` | 성숙 | (LibreDWG=GPL 계열, 확인) | — | 현재 DWG→DXF 변환에 사용 |
+| three-dxf | `gdsestimating/three-dxf` |  |  | 중간 | three.js 렌더 위임(대안) |
 | (참고)대형 뷰어 | `xeokit/xeokit-sdk`, `LibreCAD/LibreCAD` |  |  | 높음 | BIM/데스크톱급 |
 
+- **현행 한계**: 직접 만든 fabric 렌더러는 HATCH 미지원, 엔티티 일부만, 대용량 미검증.
+- **보강 후보(강력)**: `@mlightcad/cad-simple-viewer`(UI 없는 코어) 채택 → HATCH·전체 엔티티·성능 일괄 확보. ⚠️ **라이선스(특히 LibreDWG의 GPL 전파성)는 상용 배포 전 반드시 확인.**
 - **연결 지점**: [src/utils/fileLoader.ts](../src/utils/fileLoader.ts) (파싱), [Workspace.tsx](../src/components/Workspace.tsx) (렌더).
 
 ---
@@ -73,6 +75,23 @@
 | 도면 특화 모델/데이터 | `CubiCasa/CubiCasa5k`, `art-programmer/FloorplanTransformation`, `zlzeng/DeepFloorplan` |  |  | 높음 | "floor plan recognition / wall detection" |
 | 범용 분할 | `facebookresearch/segment-anything` (web) |  |  | 높음 | 클릭 기반 분할 |
 | 호스팅 | Replicate / Roboflow / HF Inference |  |  | 낮음 | 모델 올리면 API |
+
+### 📌 검증 결과(2026-06-23) — 공개 래스터 모델은 "초벌"
+- `sanatladkat/floor-plan-object-detection`(YOLOv8, 클래스: Column/Wall/Door/Window/Dimension…)을 실제 B1F 도면에 로컬 실행:
+  기둥은 부분 검출(0.5~0.76), **벽 과소검출·창문 오검출 다수**. 원인 = **주거용 학습 vs 구조도면 도메인 불일치**.
+- 결론: **벡터(DWG)가 있으면 기하 추출(모듈④)이 정답.** AI는 "벡터 없는 사진/스캔"에만, 그것도 도메인 학습 전제.
+
+### 📌 CAD(벡터) 인식의 정석 = "심볼 스포팅"(픽셀 CNN 아님)
+벡터 프리미티브 위에서 기둥·보·축선을 찾는 방식. 우리는 벡터가 있어 적합.
+| 자원 | 링크 | 라이선스 | 비고 |
+|---|---|---|---|
+| ArchCAD-400K + DPSS | `ArchiAI-LAB/ArchCAD` | **ACADEMIC**(상용 X) | 코드+가중치+데이터(40K, HF). 기둥/보 등 구조 포함, 벡터(SVG) 기반. 학습/PoC용 |
+| FloorPlanCAD | `Voxel51/FloorPlanCAD`(HF) | 연구용 | 15k+ 벡터 도면(DWG→SVG). 중화권 출처 → 대만에 상대적으로 가까움 |
+| 구조도면 YOLO(논문) | MDPI 10/6/2066 | - | grid/기둥/보 검출 ~80%, 직접 GitHub 코드는 적음 |
+
+### 📌 대만/동남아
+- **전용 레포 없음.** 중화권 CAD 데이터셋(ArchCAD/FloorPlanCAD)이 서구 주거 모델보다 대만/동남아에 가까운 **프록시**.
+- 상용 품질은 **자체 라벨링 필요** — 우리는 이미 DWG→벡터 파이프라인이 있으니, 고객 DWG를 학습데이터로 전환 가능(강점).
 
 - **연결 지점**: [src/utils/api.ts](../src/utils/api.ts) `fetchAIAnalysis` — 출력만 `{ type, points[] }` 형식 유지.
 
