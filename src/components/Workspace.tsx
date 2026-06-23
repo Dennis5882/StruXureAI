@@ -146,6 +146,25 @@ export const Workspace: React.FC = () => {
     if (hasChanged) canvas.requestRenderAll();
   }, [lines]);
 
+  // 🏷️ 기둥 그리드 참조(gridRef) 라벨 렌더링
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    canvas.getObjects().filter((o: any) => o.isGridRefLabel).forEach((o) => canvas.remove(o));
+    lines.forEach((l) => {
+      if (l.type !== 'COLUMN' || !l.properties?.gridRef || l.coordinates.length < 2) return;
+      const [a, b] = l.coordinates;
+      const txt = new fabric.Text(String(l.properties.gridRef), {
+        left: (a.x + b.x) / 2, top: Math.min(a.y, b.y) - 7,
+        fontSize: 10, fill: '#93c5fd', fontFamily: 'monospace',
+        originX: 'center', originY: 'bottom', selectable: false, evented: false,
+      });
+      (txt as any).isGridRefLabel = true;
+      canvas.add(txt);
+    });
+    canvas.requestRenderAll();
+  }, [lines]);
+
   // 📏 그리드(격자) 시각화 — gridSize>0일 때 옅은 격자선을 캔버스 좌표계에 그림
   useEffect(() => {
     const canvas = fabricCanvasRef.current;

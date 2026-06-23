@@ -1,6 +1,6 @@
 import React from 'react';
 import { useDrawingStore } from '../store/useDrawingStore';
-import { extractMembersFromDxf } from '../utils/geometry';
+import { extractStructuralModel } from '../utils/geometry';
 import { Eye, EyeOff, Layers, Filter, X, Shapes } from 'lucide-react';
 
 export const LayerSidebar: React.FC = () => {
@@ -17,21 +17,21 @@ export const LayerSidebar: React.FC = () => {
     }));
   };
 
-  // 🧱 보이는 구조 레이어(벽/기둥)를 편집 가능한 구조 부재로 추출 (보기 → 구조화)
+  // 🧱 정밀 구조모델 추출: 벽=축선+두께(mm), 기둥=gridRef+단면(mm)
   const handleExtract = () => {
     const st = useDrawingStore.getState();
     if (!st.dxfEntities.length || !st.dxfTransform) {
       alert('먼저 CAD(DXF/DWG) 파일을 불러와주세요.');
       return;
     }
-    const { members, counts, truncated } = extractMembersFromDxf(st.dxfEntities, st.dxfLayers, st.dxfTransform);
+    const { members, counts } = extractStructuralModel(st.dxfEntities, st.dxfLayers, st.dxfTransform);
     if (members.length === 0) {
-      alert('보이는 레이어에서 벽/기둥을 찾지 못했습니다.\n레이어명에 WALL/COL/벽/기둥 등이 포함돼야 인식됩니다. (자동 필터링 먼저 시도)');
+      alert('보이는 레이어에서 벽/기둥을 찾지 못했습니다.\n레이어명에 WALL/COL/벽/기둥 등이 포함돼야 합니다. (자동 필터링 먼저 시도)');
       return;
     }
     st.addLines(members);
     st.setMode('SELECT');
-    alert(`구조 부재 추출 완료\n· 벽 ${counts.wall}개\n· 기둥 ${counts.column}개\n(편집 가능한 선분 ${members.length}개)${truncated ? '\n※ 4000개 한도로 일부만 추출됨' : ''}`);
+    alert(`정밀 구조모델 추출 완료\n· 벽 축선 ${counts.wallAxes}개 (두께 측정)\n· 기둥 ${counts.columns}개 (그리드 태깅 ${counts.columnsTagged}개)\n· 미매칭 벽 면선 ${counts.unpairedFaces}개 제외`);
   };
 
   return (
@@ -63,7 +63,7 @@ export const LayerSidebar: React.FC = () => {
           className={`w-full flex items-center justify-center space-x-1.5 text-xs px-2 py-2 rounded border transition-colors ${dxfEntities.length === 0 ? 'bg-zinc-800/40 text-zinc-600 border-zinc-800' : 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/40'}`}
         >
           <Shapes size={14} />
-          <span>구조 부재 추출 (편집 가능)</span>
+          <span>정밀 구조모델 추출</span>
         </button>
       </div>
 

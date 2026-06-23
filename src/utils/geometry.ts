@@ -43,8 +43,8 @@ const classifyLayer = (name: string): StructureType | null => {
   if (/WALL|옹벽|벽|墙|牆|RC|SHEAR/.test(u)) return 'WALL';
   return null;
 };
-// 통심선(축/그리드) 레이어
-const isAxisLayer = (name: string): boolean => /AXIS|AXN|축|GRID|軸|通り|通リ/i.test(name || '');
+// 통심선(축/그리드) 레이어 — CEN(centerline), 통심선/通芯/通り芯 등 관례 포함
+const isAxisLayer = (name: string): boolean => /AXIS|AXN|GRID|CEN|축|통|軸|通/i.test(name || '');
 
 const entityPoints = (e: any): Point2D[] => {
   if (Array.isArray(e.vertices) && e.vertices.length) return e.vertices;
@@ -161,6 +161,132 @@ export const extractMembersFromDxf = (
   return { members, counts: { wall, column: kept.length }, truncated };
 };
 
+// ── P1: 정밀 구조모델 추출 (벽=축선+두께, 기둥=gridRef+단면) ──
+export interface GridLabeled {
+  xs: { pos: number; label: string }[]; // 캔버스 px, "X1"..
+  ys: { pos: number; label: string }[]; // 캔버스 px, "Y1"..(하→상)
+}
+export interface StructModelResult {
+  members: StructureLineData[];
+  grid: GridLabeled;
+  counts: { wallAxes: number; columns: number; columnsTagged: number; unpairedFaces: number };
+}
+
+export const extractStructuralModel = (
+  entities: any[],
+  layers: { name: string; visible: boolean }[],
+  t: DxfTransform,
+  opts?: { wallMinMm?: number; wallMaxMm?: number },
+): StructModelResult => {
+  const visible = new Map(layers.map((l) => [l.name, l.visible]));
+  const tx = (x: number) => t.pad + (x - t.minX) * t.scale;
+  const ty = (y: number) => t.pad + (t.maxY - y) * t.scale;
+  const scale = t.scale || 1;
+  const toMm = (px: number) => px / scale;
+  const round5 = (mm: number) => Math.round(mm / 5) * 5;
+  const minPx = (opts?.wallMinMm ?? 60) * scale;
+  const maxPx = (opts?.wallMaxMm ?? 600) * scale;
+  let idc = 0; const nid = (p: string) => `${p}_${Date.now().toString(36)}_${idc++}`;
+
+  // 그리드 + 자동 라벨 (X: 좌→우, Y: 하→상)
+  const g = extractGrid(entities, tx, ty);
+  const xs = g.xs.slice().sort((a, b) => a - b).map((pos, i) => ({ pos, label: `X${i + 1}` }));
+  const ys = g.ys.slice().sort((a, b) => b - a).map((pos, i) => ({ pos, label: `Y${i + 1}` }));
+  const grid: GridLabeled = { xs, ys };
+  const REF_TOL = 28;
+  const gridRefOf = (cx: number, cy: number): string | undefined => {
+    let xl: string | undefined, yl: string | undefined;
+    if (xs.length) { const n = xs.reduce((b, a) => Math.abs(a.pos - cx) < Math.abs(b.pos - cx) ? a : b); if (Math.abs(n.pos - cx) <= REF_TOL) xl = n.label; }
+    if (ys.length) { const n = ys.reduce((b, a) => Math.abs(a.pos - cy) < Math.abs(b.pos - cy) ? a : b); if (Math.abs(n.pos - cy) <= REF_TOL) yl = n.label; }
+    return xl && yl ? `${xl}-${yl}` : (xl || yl);
+  };
+
+  // 엔티티 수집: 벽 면선(px), 기둥 bbox(px)
+  const faces: { a: Point2D; b: Point2D }[] = [];
+  type Col = { cx: number; cy: number; w: number; h: number; layer: string };
+  const cols: Col[] = [];
+  for (const e of entities) {
+    const cls = classifyLayer(e.layer);
+    if (!cls) continue;
+    if (visible.get(e.layer) === false) continue;
+    if (cls === 'COLUMN') {
+      const pts = entityPoints(e); if (pts.length < 2) continue;
+      let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+      for (const p of pts) { if (p.x < mnx) mnx = p.x; if (p.x > mxx) mxx = p.x; if (p.y < mny) mny = p.y; if (p.y > mxy) mxy = p.y; }
+      if (mxx - mnx < 1e-6 || mxy - mny < 1e-6) continue;
+      const x1 = tx(mnx), x2 = tx(mxx), y1 = ty(mxy), y2 = ty(mny);
+      cols.push({ cx: (x1 + x2) / 2, cy: (y1 + y2) / 2, w: Math.abs(x2 - x1), h: Math.abs(y2 - y1), layer: e.layer });
+      continue;
+    }
+    const et = (e.type || '').toUpperCase();
+    const add = (p1: Point2D, p2: Point2D) => faces.push({ a: { x: tx(p1.x), y: ty(p1.y) }, b: { x: tx(p2.x), y: ty(p2.y) } });
+    if (et === 'LINE' && Array.isArray(e.vertices) && e.vertices.length >= 2) add(e.vertices[0], e.vertices[1]);
+    else if ((et === 'LWPOLYLINE' || et === 'POLYLINE') && Array.isArray(e.vertices) && e.vertices.length >= 2) {
+      for (let i = 0; i < e.vertices.length - 1; i++) add(e.vertices[i], e.vertices[i + 1]);
+      if (e.shape === true || e.closed === true) add(e.vertices[e.vertices.length - 1], e.vertices[0]);
+    }
+  }
+
+  // 벽 면쌍 → 축선 + 두께(mm)
+  const rawAxes: StructureLineData[] = [];
+  const used = new Set<number>();
+  let unpaired = 0;
+  for (let i = 0; i < faces.length; i++) {
+    if (used.has(i)) continue;
+    const A = faces[i]; const angA = getAngle(A.a, A.b); const midA = getMidpoint(A.a, A.b);
+    let bj = -1, bd = Infinity;
+    for (let j = 0; j < faces.length; j++) {
+      if (j === i || used.has(j)) continue;
+      const B = faces[j];
+      let ad = Math.abs(angA - getAngle(B.a, B.b)); if (ad > Math.PI / 2) ad = Math.PI - ad;
+      if (ad > 0.08) continue;
+      const d = getDistance(midA, perpFoot(midA, B.a, B.b));
+      if (d < minPx || d > maxPx || d >= bd) continue;
+      const t1 = projParam(A.a, B.a, B.b), t2 = projParam(A.b, B.a, B.b);
+      const ov = Math.min(Math.max(t1, t2), 1) - Math.max(Math.min(t1, t2), 0);
+      if (ov <= 0.05) continue;
+      bd = d; bj = j;
+    }
+    if (bj >= 0) {
+      used.add(i); used.add(bj);
+      const B = faces[bj];
+      rawAxes.push({
+        id: nid('wall'), source: 'CAD', type: 'WALL', shape: 'line',
+        coordinates: [getMidpoint(A.a, perpFoot(A.a, B.a, B.b)), getMidpoint(A.b, perpFoot(A.b, B.a, B.b))],
+        thickness: 2, properties: { fromCad: true, isAxis: true, thickness_mm: round5(toMm(bd)) },
+      });
+    } else unpaired++;
+  }
+  const wallAxes = mergeCollinearLines(rawAxes, Math.max(4, maxPx * 0.5), Math.max(30, maxPx * 8));
+
+  // 기둥: 그리드 스냅 + 중복 제거 + gridRef/단면(mm)
+  const SNAP = 20, DEDUP = 10;
+  const xpos = xs.map((o) => o.pos), ypos = ys.map((o) => o.pos);
+  for (const c of cols) {
+    if (xpos.length) { const n = nearest(c.cx, xpos); if (n.dist <= SNAP) c.cx = n.val; }
+    if (ypos.length) { const n = nearest(c.cy, ypos); if (n.dist <= SNAP) c.cy = n.val; }
+  }
+  const kept: Col[] = [];
+  for (const c of cols) {
+    const dup = kept.find((k) => Math.hypot(k.cx - c.cx, k.cy - c.cy) <= DEDUP);
+    if (dup) { dup.w = Math.max(dup.w, c.w); dup.h = Math.max(dup.h, c.h); }
+    else kept.push({ ...c });
+  }
+
+  const members: StructureLineData[] = [...wallAxes];
+  let tagged = 0;
+  for (const c of kept) {
+    const ref = gridRefOf(c.cx, c.cy); if (ref) tagged++;
+    members.push({
+      id: nid('col'), source: 'CAD', type: 'COLUMN', shape: 'rect',
+      coordinates: [{ x: c.cx - c.w / 2, y: c.cy - c.h / 2 }, { x: c.cx + c.w / 2, y: c.cy + c.h / 2 }],
+      thickness: 2, properties: { fromCad: true, gridRef: ref, width_mm: round5(toMm(c.w)), depth_mm: round5(toMm(c.h)) },
+    });
+  }
+
+  return { members, grid, counts: { wallAxes: wallAxes.length, columns: kept.length, columnsTagged: tagged, unpairedFaces: unpaired } };
+};
+
 // ── 동일선상 인접 중심선 병합 (연결성) ──────────────────────
 const mergeCollinearLines = (
   lines: StructureLineData[],
@@ -197,6 +323,11 @@ const mergeCollinearLines = (
   const groups = new Map<number, number[]>();
   for (let i = 0; i < n; i++) { const r = find(i); (groups.get(r) || groups.set(r, []).get(r)!).push(i); }
 
+  const avgThickMm = (idxs: number[]): number | undefined => {
+    const vals = idxs.map((i) => lines[i].properties?.thickness_mm).filter((v) => typeof v === 'number') as number[];
+    return vals.length ? Math.round(vals.reduce((s, x) => s + x, 0) / vals.length) : undefined;
+  };
+
   const merged: StructureLineData[] = [];
   for (const idxs of groups.values()) {
     if (idxs.length === 1) { merged.push(lines[idxs[0]]); continue; }
@@ -213,11 +344,12 @@ const mergeCollinearLines = (
         if (t > hi) { hi = t; hiP = foot; }
       }
     }
+    const base = lines[dirI];
     merged.push({
-      id: `center_${Date.now().toString(36)}_m${merged.length}`,
-      source: 'CAD', type: 'CENTER_LINE', shape: 'line',
-      coordinates: [loP, hiP], thickness: 2,
-      properties: { isAutoGenerated: true, merged: idxs.length },
+      id: `${base.type === 'WALL' ? 'wall' : 'center'}_${Date.now().toString(36)}_m${merged.length}`,
+      source: 'CAD', type: base.type, shape: 'line',
+      coordinates: [loP, hiP], thickness: base.thickness ?? 2,
+      properties: { ...(base.properties || {}), merged: idxs.length, thickness_mm: avgThickMm(idxs) ?? base.properties?.thickness_mm },
     });
   }
   return merged;
