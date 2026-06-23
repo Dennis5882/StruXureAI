@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.18.0** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.19.0** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -153,6 +153,11 @@ export interface StructureLineData {
   - **벽 통심선(gridLine) 라벨링**: 각 벽 축선이 평행·근접한 그리드선(X/Y 통심)에 매칭되면 `gridLine` 속성 태깅(축 위 벽 식별, 그리드 사이 칸막이벽은 미태깅)
   - **보(Beam) 추출(P2)**: 보 레이어(`S-BEAM/BEAM/보/梁/大梁/小梁/GIRDER`) → **이중선(면쌍)은 축선+폭(mm)**, **단일선은 중심선 직접 사용**(`singleLine` 플래그), 동일선상 병합. (벽 면쌍 로직을 공용 헬퍼 `pairFaces`로 공유)
   - **두께 양자화 프리셋**: 사이드바 "두께 표준"(원본/대만·동남아/한국) 선택 → 측정 두께를 지역 표준치(`TW-Standard`: 120/150/180/200/240/250/300/400 등)로 ±50mm 내 스냅, 원본은 `*_measured_mm`로 보존. MIDAS 단면 정리용. 기본=원본(끔)
+- **MIDAS Gen NX 내보내기(P4a, 단일층 PoC)** [`midasExport.ts`]: 추출된 구조부재(px) → **월드(mm) 단일층 구조모델** → **MIDAS NX Open API 요청 시퀀스** 생성.
+  - 기둥=수직 `BEAM`(단면 depth×width), 벽=수직 압출 4점 `PLATE`(두께 thik→SECT 참조), 보=수평 `BEAM`. 절점 중복 통합, 하단 고정 지지. 재질=더미 `CNS560(RC)`(대만), 단면=측정 기하
+  - 사이드바 "MIDAS Gen NX 내보내기" 패널: 층고/등급/Base URL/**MAPI-Key** 입력 → **API 전송**(fetch, Gen NX 실행 필요) / **JSON·Python 다운로드**(CORS·오프라인 대비)
+  - 스키마 근거: [Dennis5882/MIDAS-API](https://github.com/Dennis5882/MIDAS-API) + 대만 RC 에이전트(live-verified). 모든 `/db/*`=PUT, `{Assign:{id:{}}}`
+  - ⚠️ 전송은 **MIDAS Gen NX 실행 + MAPI-Key 필요**(서버 경유). 페이로드는 B1F로 검증, 라이브 전송은 사용자 환경 확인
   - **기둥 = 중심점+단면 + 회전 + gridRef** [`minAreaRect`]: **최소면적 직사각형**(회전 캘리퍼스)으로 사선 기둥도 정확한 **단면(width/depth mm)·회전각(rotation_deg)** 산출(축정렬 기둥은 deg=0), **그리드 참조(X3-Y5) 자동 태깅**(라벨 렌더), 그리드 스냅·중복 제거
   - **그리드 추출**: 축선/통심선 레이어(`AXIS/AXN/GRID/CEN/축/통/軸/通`)에서 x·y 격자 산출 + 자동 라벨(X1.. 좌→우, Y1.. 하→상)
   - **조적벽 제외**: `MASONRY/조적/벽돌/BRICK/磚/砌` 비내력 레이어 제외
@@ -177,6 +182,14 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-23 — v0.19.0 (P4a: MIDAS Gen NX 내보내기 — 단일층)
+- ✨ **`midasExport.ts`**: 구조부재 → 월드(mm) 단일층 모델 → MIDAS NX Open API 요청 시퀀스(`/doc/new`→`unit`→`matl`→`sect`→`thik`→`node`→`elem`→`cons`→`/doc/save`)
+  - 기둥/보=`BEAM`, 벽=수직 4점 `PLATE`(두께 thik→SECT), 절점 통합, 하단 고정. 재질=`CNS560(RC)` 더미
+  - `buildMidasRequests`(생성) / `sendMidas`(fetch 전송) / `toPythonScript`(스크립트 내보내기)
+- ✨ **MidasExport 패널**(사이드바): 층고·등급·BaseURL·MAPI-Key + API 전송/JSON·Python 다운로드
+- 🔍 검증(Playwright, B1F): 절점 216·기둥 50·벽 39(PLATE 4점)·단면 4·두께 6, 요청순서/Z레벨(0·-3200)/지지(108) 정확, 에러 0. 스키마는 대만 RC 에이전트(live-verified) 준거
+- ⏭️ 후속(P4b): 다층 스택(표준층 1:N), 보↔기둥 위상연결, 라이브 전송 실환경 검증
 
 ### 2026-06-23 — v0.18.0 (두께 양자화 프리셋)
 - ✨ **지역별 두께 표준 스냅**: `THICKNESS_PRESETS`(TW-Standard/KR-Standard) 주입형. 측정 벽두께·보폭을 ±50mm 내 가장 가까운 표준치로 스냅, 원본은 `*_measured_mm` 보존. 사이드바 "두께 표준" 선택자(기본 원본=끔)

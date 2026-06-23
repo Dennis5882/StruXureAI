@@ -204,7 +204,8 @@ interface BuildingModel {
 | **P1** | 벽 축선·두께(mm) + 그리드 1급화 + 기둥 메타/gridRef | **정형 평행벽** 축선 추출(교차부는 예외 플래그) + 기둥 gridRef + 그리드 라벨. Playwright 검증. *복잡 교차부는 P3로 이관* |
 | **P2** ✅ | 보 추출 | 보 레이어 있으면 보 부재 생성 — `pairFaces`(이중선)+단일선 폴백(v0.17.0). 합성검증 완료, 실데이터 검증 대기(B1F엔 보 레이어 없음) |
 | **P3** ✅ | 위상 정리(스냅·trim/extend) | 축선이 기둥/교차점에 연결(절점 그래프) — `cleanupTopology`(v0.14.0). B1F: 39벽 전부 `n0/n1` 태깅, 접합 절점 14 |
-| **P4** | 층 조립 + 내보내기(JSON/DXF→MIDAS) | 다층 모델 1개 왕복 + MIDAS 연계 PoC |
+| **P4a** ✅ | 단일층 MIDAS 내보내기 | `midasExport.ts`(v0.19.0): 절점+BEAM/PLATE 요소 API 시퀀스, CNS560 더미재질. B1F 검증, 라이브 전송은 사용자 환경 |
+| **P4b** | 다층 스택 + 위상강화 | 표준층 1:N(Story Data), 보↔기둥 연결, 라이브 전송 검증 |
 
 ---
 

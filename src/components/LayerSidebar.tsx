@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { extractStructuralModel, ThicknessProfile } from '../utils/geometry';
+import { MidasExport } from './MidasExport';
 import { Eye, EyeOff, Layers, Filter, X, Shapes } from 'lucide-react';
 
 export const LayerSidebar: React.FC = () => {
@@ -100,6 +101,9 @@ export const LayerSidebar: React.FC = () => {
           ))
         )}
       </div>
+
+      {/* MIDAS Gen NX 내보내기 */}
+      <MidasExport />
     </div>
   );
 };

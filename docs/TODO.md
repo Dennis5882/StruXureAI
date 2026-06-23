@@ -1,7 +1,7 @@
 # StruXureAI — 진행상황 & 앞으로 할 일 (통합 기록)
 
 > 이 문서는 작업 핸드오프용 단일 기록. 대화가 압축돼도 여기서 맥락을 복구한다.
-> 기준 버전: **v0.18.0** · 갱신: 2026-06-23 · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.19.0** · 갱신: 2026-06-23 · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 함께 보기: [STRUCTURAL_MODEL.md](./STRUCTURAL_MODEL.md)(정밀추출 설계) · [MODULES.md](./MODULES.md)(OSS 조사)
 
 ---
@@ -26,6 +26,7 @@
 - **보(Beam) 추출(P2)** [`pairFaces` 공용]: 이중선 보→축선+폭, 단일선 보→중심선(`singleLine`). (합성검증 완료. ⚠️ B1F엔 보 레이어 없음 → 실데이터 검증은 보 있는 도면 필요)
 - **리사이즈 정합 버그수정**(v0.16.1): 추출 후 DXF 스케일 고정(`dxfFitRef`).
 - **두께 양자화 프리셋**(v0.18.0): `THICKNESS_PRESETS`(TW/KR) 주입형, 사이드바 "두께 표준" 선택. 측정값 ±50mm 표준 스냅, 원본 `*_measured_mm` 보존. (B1F TW: 4개 스냅)
+- **MIDAS Gen NX 내보내기(P4a, 단일층)**(v0.19.0) [`midasExport.ts`+`MidasExport.tsx`]: 구조부재→월드(mm)→MIDAS API 시퀀스(PUT /db/*, {Assign}). 기둥/보=BEAM, 벽=수직 PLATE(4점). API 전송(fetch)/JSON·Python 다운로드. 스키마=대만 RC 에이전트 live-verified. (B1F: 절점216·기둥50·벽39 검증)
 - **운영**: Vercel 방문자 분석(@vercel/analytics), 재배포 stale-chunk 자동 새로고침, 버전 배지.
 - **문서**: MODULES.md, STRUCTURAL_MODEL.md(+Gemini 피드백), 발표 PPT(번체).
 
@@ -41,10 +42,12 @@
 4. ~~**[P2] 보(Beam) 추출**~~ ✅ **완료(v0.17.0)** — `pairFaces` 공용(이중선) + 단일선 폴백. 실데이터(보 레이어 있는 도면) 검증은 추후. 후속: 보↔기둥/벽 위상연결, 보 gridLine 라벨, 라벨 텍스트(B1 300x600)에서 폭/춤 파싱.
 5. ~~**두께 양자화 프리셋**~~ ✅ **완료(v0.18.0)** — TW/KR 프리셋 주입형, 사이드바 선택.
 6. **단일선 벽 처리**: 짝 없는 벽선 기본두께 부여 vs 보류(플래그) 정책. (미매칭 면선 86개 중 실제 단일선 벽 선별 — B1F는 대부분 이중선이라 노이즈 위험, 보수적으로)
-7. **[P4] 층 조립 + 내보내기 (다음 추천, 큰 작업·최종 목표)**:
-   - `structural.ts` 스키마 + store `model`(월드 mm), 가교유틸 `worldToCanvas/canvasToWorld`, 승격/반영 생명주기.
-   - FloorModel×N → BuildingModel, 다층 스택, 수직 연속성(같은 gridRef 기둥).
-   - 내보내기 JSON/DXF → **MIDAS**(절점+요소 기하 정합, **더미 속성** `Dummy_C1/Dummy_W1`로 내보내고 단면/재질은 MIDAS에서 일괄 대입).
+7. **[P4a] 단일층 MIDAS 내보내기** ✅ **완료(v0.19.0)** — `midasExport.ts`(buildMidasRequests/sendMidas/toPythonScript) + `MidasExport.tsx` 패널. 절점+BEAM/PLATE 요소, CNS560 더미재질.
+8. **[P4b] 다층 + 위상강화 (다음 추천, 최종 목표 마무리)**:
+   - **라이브 전송 실환경 검증**(Gen NX 실행+MAPI키 — 사용자). CORS 차단 시 Python/JSON 폴백 확인.
+   - **다층 스택**: DESIGN.md(e:/AI Study/Story)의 **표준층(기하동일·내력상이) 1:N 매핑** 참고. FloorModel×N → BuildingModel, Z방향 복제, MIDAS **Story Data(STRY)** 연동, 같은 gridRef 기둥 수직 연속.
+   - **보↔기둥/벽 위상연결**(절점 공유), 보 단면 춤 라벨 파싱.
+   - 참고자료: `e:/AI Study/Story`(대만 RC 에이전트, MAPI 엔드포인트 카탈로그, 대만 내진/풍하중), [Dennis5882/MIDAS-API](https://github.com/Dennis5882/MIDAS-API).
 
 ---
 
