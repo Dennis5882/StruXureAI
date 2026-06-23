@@ -1,7 +1,7 @@
 # StruXureAI — 진행상황 & 앞으로 할 일 (통합 기록)
 
 > 이 문서는 작업 핸드오프용 단일 기록. 대화가 압축돼도 여기서 맥락을 복구한다.
-> 기준 버전: **v0.16.0** · 갱신: 2026-06-23 · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.16.1** · 갱신: 2026-06-23 · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 함께 보기: [STRUCTURAL_MODEL.md](./STRUCTURAL_MODEL.md)(정밀추출 설계) · [MODULES.md](./MODULES.md)(OSS 조사)
 
 ---
@@ -58,7 +58,7 @@
 - **데드코드**: `extractMembersFromDxf`(구버전)·`ExtractResult` 미사용 → 제거 가능. ("정밀 구조모델 추출"이 `extractStructuralModel` 사용)
 - **"중심선 자동" 버튼**: 정밀 추출이 이미 벽을 축선으로 만들므로 부분 중복 — 수동 벽용으로 남김(정리 여지).
 - **그리드 라벨**: 버블 없는 도면은 자동번호(보조 CEN 포함될 수 있음) — 버블 있으면 정합됨.
-- **좌표**: 현재 캔버스 px + mm는 properties에 동반. 다층/MIDAS(P4) 때 월드 모델로 승격 예정.
+- **좌표**: 현재 캔버스 px + mm는 properties에 동반. 다층/MIDAS(P4) 때 월드 모델로 승격 예정. ⚠️ px 저장이라 리사이즈 시 부재가 배경과 어긋날 수 있어 **추출 후 DXF 맞춤 스케일을 파일별로 고정**(v0.16.1)으로 우회 중. 근본 해결은 월드(mm) 저장+렌더시 변환(P4).
 - **선(LINE) 크기조절·회전**: 정점 편집만(설계상). rect/원/삼각형은 네이티브 지원.
 
 ---

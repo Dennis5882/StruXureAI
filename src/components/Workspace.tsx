@@ -65,6 +65,9 @@ export const Workspace: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
   const dragCounter = useRef(0);
+  // 파일별로 고정한 DXF 맞춤(scale). 구조부재 추출 후엔 리사이즈해도 이 값을 재사용해
+  // 배경 도면과 추출 부재(px 좌표)의 정합이 깨지지 않게 한다.
+  const dxfFitRef = useRef<{ entities: any; scale: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [resizeTick, setResizeTick] = useState(0); // 영역 크기 변화 시 도면 재맞춤 트리거
 
@@ -265,7 +268,17 @@ export const Workspace: React.FC = () => {
     const pad = 40;
     const dxfW = (maxX - minX) || 1;
     const dxfH = (maxY - minY) || 1;
-    const scale = Math.min((canvas.getWidth() - pad * 2) / dxfW, (canvas.getHeight() - pad * 2) / dxfH);
+    // 구조부재(CAD 추출)가 이미 있으면 리사이즈 시 스케일을 고정해 정합 유지.
+    // (px 좌표로 저장된 부재가 스케일 변경에 따라가지 못해 어긋나는 문제 방지)
+    const hasCadMembers = useDrawingStore.getState().lines.some((l) => l.source === 'CAD');
+    const sameFile = dxfFitRef.current?.entities === dxfEntities;
+    let scale: number;
+    if (sameFile && hasCadMembers && dxfFitRef.current) {
+      scale = dxfFitRef.current.scale; // 고정값 재사용
+    } else {
+      scale = Math.min((canvas.getWidth() - pad * 2) / dxfW, (canvas.getHeight() - pad * 2) / dxfH);
+      dxfFitRef.current = { entities: dxfEntities, scale };
+    }
     const tx = (x: number) => pad + (x - minX) * scale;
     const ty = (y: number) => pad + (maxY - y) * scale;
     // 구조 부재 추출이 화면과 정확히 정합되도록 변환 파라미터 저장
