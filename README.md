@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.17.0** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.18.0** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -152,6 +152,7 @@ export interface StructureLineData {
   - **위상 정리(P3)** [`cleanupTopology`]: 벽 축선 끝점을 **기둥 중심/축선 교차점에 연결**(L·T·+ 접합 extend/trim), 근접 끝점을 **절점(node)으로 클러스터링**해 `n0/n1` 절점 ID 부여 → **절점-부재 그래프**(구조해석 모델 직전 형태)
   - **벽 통심선(gridLine) 라벨링**: 각 벽 축선이 평행·근접한 그리드선(X/Y 통심)에 매칭되면 `gridLine` 속성 태깅(축 위 벽 식별, 그리드 사이 칸막이벽은 미태깅)
   - **보(Beam) 추출(P2)**: 보 레이어(`S-BEAM/BEAM/보/梁/大梁/小梁/GIRDER`) → **이중선(면쌍)은 축선+폭(mm)**, **단일선은 중심선 직접 사용**(`singleLine` 플래그), 동일선상 병합. (벽 면쌍 로직을 공용 헬퍼 `pairFaces`로 공유)
+  - **두께 양자화 프리셋**: 사이드바 "두께 표준"(원본/대만·동남아/한국) 선택 → 측정 두께를 지역 표준치(`TW-Standard`: 120/150/180/200/240/250/300/400 등)로 ±50mm 내 스냅, 원본은 `*_measured_mm`로 보존. MIDAS 단면 정리용. 기본=원본(끔)
   - **기둥 = 중심점+단면 + 회전 + gridRef** [`minAreaRect`]: **최소면적 직사각형**(회전 캘리퍼스)으로 사선 기둥도 정확한 **단면(width/depth mm)·회전각(rotation_deg)** 산출(축정렬 기둥은 deg=0), **그리드 참조(X3-Y5) 자동 태깅**(라벨 렌더), 그리드 스냅·중복 제거
   - **그리드 추출**: 축선/통심선 레이어(`AXIS/AXN/GRID/CEN/축/통/軸/通`)에서 x·y 격자 산출 + 자동 라벨(X1.. 좌→우, Y1.. 하→상)
   - **조적벽 제외**: `MASONRY/조적/벽돌/BRICK/磚/砌` 비내력 레이어 제외
@@ -176,6 +177,10 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-23 — v0.18.0 (두께 양자화 프리셋)
+- ✨ **지역별 두께 표준 스냅**: `THICKNESS_PRESETS`(TW-Standard/KR-Standard) 주입형. 측정 벽두께·보폭을 ±50mm 내 가장 가까운 표준치로 스냅, 원본은 `*_measured_mm` 보존. 사이드바 "두께 표준" 선택자(기본 원본=끔)
+- 🔍 검증(Playwright, B1F): TW-Standard 선택 시 4개 벽 표준치 스냅, 에러 0
 
 ### 2026-06-23 — v0.17.0 (P2: 보 추출)
 - ✨ **보(Beam) 추출**: 보 레이어(`S-BEAM/BEAM/보/梁/大梁/小梁/GIRDER`, 벽보다 먼저 분류) → 이중선은 면쌍 매칭으로 축선+폭(mm), 단일선은 중심선 직접 사용(`singleLine`), 동일선상 병합

@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useDrawingStore } from '../store/useDrawingStore';
-import { extractStructuralModel } from '../utils/geometry';
+import { extractStructuralModel, ThicknessProfile } from '../utils/geometry';
 import { Eye, EyeOff, Layers, Filter, X, Shapes } from 'lucide-react';
 
 export const LayerSidebar: React.FC = () => {
   const { dxfLayers, dxfEntities, isSidebarOpen, toggleDxfLayer, toggleSidebar, setDxfLayers } = useDrawingStore();
+  const [thicknessProfile, setThicknessProfile] = useState<ThicknessProfile>('raw');
 
   if (!isSidebarOpen) return null;
 
@@ -24,14 +25,15 @@ export const LayerSidebar: React.FC = () => {
       alert('먼저 CAD(DXF/DWG) 파일을 불러와주세요.');
       return;
     }
-    const { members, counts } = extractStructuralModel(st.dxfEntities, st.dxfLayers, st.dxfTransform);
+    const { members, counts } = extractStructuralModel(st.dxfEntities, st.dxfLayers, st.dxfTransform, { thicknessProfile });
     if (members.length === 0) {
       alert('보이는 레이어에서 벽/기둥을 찾지 못했습니다.\n레이어명에 WALL/COL/벽/기둥 등이 포함돼야 합니다. (자동 필터링 먼저 시도)');
       return;
     }
     st.addLines(members);
     st.setMode('SELECT');
-    alert(`정밀 구조모델 추출 완료\n· 벽 축선 ${counts.wallAxes}개 (두께 측정, 통심선 라벨 ${counts.wallsLabeled}개)\n· 기둥 ${counts.columns}개 (그리드 태깅 ${counts.columnsTagged}개)\n· 보 ${counts.beams}개\n· 미매칭 벽 면선 ${counts.unpairedFaces}개 제외\n· 위상 정리: 절점 ${counts.nodes}개, 교차연장 ${counts.extended}, 기둥스냅 ${counts.snappedCol}`);
+    const qLine = thicknessProfile === 'raw' ? '' : `\n· 두께 양자화(${thicknessProfile}): ${counts.quantized}개 표준치 스냅`;
+    alert(`정밀 구조모델 추출 완료\n· 벽 축선 ${counts.wallAxes}개 (두께 측정, 통심선 라벨 ${counts.wallsLabeled}개)\n· 기둥 ${counts.columns}개 (그리드 태깅 ${counts.columnsTagged}개)\n· 보 ${counts.beams}개\n· 미매칭 벽 면선 ${counts.unpairedFaces}개 제외\n· 위상 정리: 절점 ${counts.nodes}개, 교차연장 ${counts.extended}, 기둥스냅 ${counts.snappedCol}${qLine}`);
   };
 
   return (
@@ -65,6 +67,18 @@ export const LayerSidebar: React.FC = () => {
           <Shapes size={14} />
           <span>정밀 구조모델 추출</span>
         </button>
+        <label className="flex items-center justify-between text-[11px] text-zinc-400 px-0.5">
+          <span title="측정 두께를 지역 표준치로 스냅 (MIDAS 단면 정리용)">두께 표준</span>
+          <select
+            value={thicknessProfile}
+            onChange={(e) => setThicknessProfile(e.target.value as ThicknessProfile)}
+            className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-zinc-200 text-[11px] focus:outline-none focus:border-emerald-500/50"
+          >
+            <option value="raw">원본(측정값)</option>
+            <option value="TW-Standard">대만/동남아</option>
+            <option value="KR-Standard">한국</option>
+          </select>
+        </label>
       </div>
 
       {/* Layer List */}

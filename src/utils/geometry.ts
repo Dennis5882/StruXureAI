@@ -272,6 +272,19 @@ export const extractMembersFromDxf = (
   return { members, counts: { wall, column: kept.length }, truncated };
 };
 
+// ── 두께 양자화 프리셋 (지역별 표준 부재두께, mm) ──
+// 측정값을 가장 가까운 표준값으로 스냅(허용오차 내). 'raw'면 끔(측정+5mm반올림 유지).
+export type ThicknessProfile = 'raw' | 'TW-Standard' | 'KR-Standard';
+export const THICKNESS_PRESETS: Record<string, number[]> = {
+  'TW-Standard': [120, 150, 180, 200, 240, 250, 300, 400], // 대만/동남아 RC
+  'KR-Standard': [150, 200, 250, 300, 350, 400],
+};
+const quantizeTo = (mm: number, table: number[], tolMm: number): number => {
+  if (!table || !table.length) return mm;
+  const n = table.reduce((b, v) => (Math.abs(v - mm) < Math.abs(b - mm) ? v : b));
+  return Math.abs(n - mm) <= tolMm ? n : mm;
+};
+
 // ── 면쌍 매칭: 근평행 + 두께범위 + 길이중첩인 두 면선 → 중심 축선 + 수직두께(px) ──
 interface Face { a: Point2D; b: Point2D; }
 const pairFaces = (
@@ -312,6 +325,7 @@ export interface StructModelResult {
   counts: {
     wallAxes: number; columns: number; columnsTagged: number; unpairedFaces: number;
     nodes: number; extended: number; snappedCol: number; wallsLabeled: number; beams: number;
+    quantized: number;
   };
 }
 
@@ -319,7 +333,7 @@ export const extractStructuralModel = (
   entities: any[],
   layers: { name: string; visible: boolean }[],
   t: DxfTransform,
-  opts?: { wallMinMm?: number; wallMaxMm?: number; beamMinMm?: number; beamMaxMm?: number; topology?: boolean; extendMm?: number; nodeMm?: number },
+  opts?: { wallMinMm?: number; wallMaxMm?: number; beamMinMm?: number; beamMaxMm?: number; topology?: boolean; extendMm?: number; nodeMm?: number; thicknessProfile?: ThicknessProfile },
 ): StructModelResult => {
   const visible = new Map(layers.map((l) => [l.name, l.visible]));
   const tx = (x: number) => t.pad + (x - t.minX) * t.scale;
@@ -399,6 +413,24 @@ export const extractStructuralModel = (
   }
   const beams = rawBeams.length ? mergeCollinearLines(rawBeams, Math.max(4, beamMaxPx * 0.5), Math.max(30, beamMaxPx * 8)) : [];
 
+  // 두께 양자화(프리셋): 측정값을 지역 표준치로 스냅. 원본은 *_measured_mm 로 보존. (raw면 끔)
+  const profile = opts?.thicknessProfile ?? 'raw';
+  const presetTable = THICKNESS_PRESETS[profile];
+  let quantized = 0;
+  if (presetTable) {
+    const QTOL = 50; // mm
+    for (const w of wallAxes) {
+      const m = w.properties?.thickness_mm; if (typeof m !== 'number') continue;
+      const q = quantizeTo(m, presetTable, QTOL);
+      if (q !== m) { w.properties = { ...w.properties, thickness_mm: q, thickness_measured_mm: m }; quantized++; }
+    }
+    for (const bm of beams) {
+      const m = bm.properties?.width_mm; if (typeof m !== 'number') continue;
+      const q = quantizeTo(m, presetTable, QTOL);
+      if (q !== m) { bm.properties = { ...bm.properties, width_mm: q, width_measured_mm: m }; quantized++; }
+    }
+  }
+
   // 기둥: 그리드 스냅 + 중복 제거 + gridRef/단면(mm)
   const SNAP = 20, DEDUP = 10;
   const xpos = xs.map((o) => o.pos), ypos = ys.map((o) => o.pos);
@@ -449,6 +481,7 @@ export const extractStructuralModel = (
     counts: {
       wallAxes: wallAxes.length, columns: kept.length, columnsTagged: tagged, unpairedFaces: unpaired,
       nodes: topo.nodes, extended: topo.extended, snappedCol: topo.snappedCol, wallsLabeled, beams: beams.length,
+      quantized,
     },
   };
 };

@@ -179,6 +179,7 @@ interface BuildingModel {
   - `KR-Standard`: 150, 200, 250, 300, …(추후 확정)
   - `raw`: 양자화 끔(측정값 + 5mm 반올림만)
 - 측정값을 프리셋 중 **가장 가까운 값(±tol)** 으로 스냅. 기둥 단면도 동일 방식 확장 가능.
+- ✅ 구현(v0.18.0): `THICKNESS_PRESETS` + `quantizeTo`(±50mm), 사이드바 "두께 표준" 선택. 벽두께·보폭 적용, 원본 `*_measured_mm` 보존. 기둥 단면 확장은 추후.
 
 ---
 
