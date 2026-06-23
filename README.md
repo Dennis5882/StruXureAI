@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.13.0** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.13.1** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -173,6 +173,10 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-23 — v0.13.1 (그리드 버블 라벨 정합)
+- ✨ **버블 TEXT 라벨 정합**: 통심부호 레이어(`LAY_FOR_NGEN_BUBBLE_DATA` 등)의 "X1"~"X10"/"Y1"~"Y8" 텍스트를 CEN 그리드 선에 매칭 → **실제 도면 라벨과 일치**(이전 자동번호 X17/Y14 → 정확한 X1‥X10/Y1‥Y8). 버블 있는 선만 정규 그리드로 채택(보조 중심선 자동 필터). 버블 없으면 자동번호 폴백
+- 🔍 검증(Playwright): B1F → 기둥 50개 gridRef가 실제 버블과 정합(X1-Y1 ~ X10-Y8)
 
 ### 2026-06-23 — v0.13.0 (P1: 정밀 구조모델 추출)
 - ✨ **`extractStructuralModel`**: 벽=**축선+두께(mm)**, 기둥=**gridRef+단면(mm)**, 그리드 1급 추출+자동 라벨

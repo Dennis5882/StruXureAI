@@ -45,6 +45,9 @@ const classifyLayer = (name: string): StructureType | null => {
 };
 // 통심선(축/그리드) 레이어 — CEN(centerline), 통심선/通芯/通り芯 등 관례 포함
 const isAxisLayer = (name: string): boolean => /AXIS|AXN|GRID|CEN|축|통|軸|通/i.test(name || '');
+// 축 버블(통심부호) 레이어
+const isBubbleLayer = (name: string): boolean => /BUBBLE|버블|통.?부호|軸符|通り符/i.test(name || '');
+const cleanText = (s: string): string => (s || '').replace(/\\[A-Za-z][^;]*;|[{}]/g, '').trim();
 
 const entityPoints = (e: any): Point2D[] => {
   if (Array.isArray(e.vertices) && e.vertices.length) return e.vertices;
@@ -68,6 +71,54 @@ const extractGrid = (entities: any[], tx: (x: number) => number, ty: (y: number)
     else if (dy < 2 && dx > 20) ys.push((a.y + b.y) / 2);   // 수평 축선 → y 격자
   }
   return { xs: clusterValues(xs, 4), ys: clusterValues(ys, 4) };
+};
+
+// 그리드 라벨 정합: CEN 그리드 선(정확 위치) + 버블 TEXT(정확 라벨) 결합.
+// 버블을 가장 가까운 선에 매칭 → 라벨 부여, 버블 있는 선만 정규 그리드로 채택.
+// 버블이 없으면 선을 정렬 자동번호로 폴백.
+export interface GridLabeled {
+  xs: { pos: number; label: string }[]; // 캔버스 px
+  ys: { pos: number; label: string }[];
+}
+const extractGridLabeled = (entities: any[], tx: (x: number) => number, ty: (y: number) => number): GridLabeled => {
+  const lines = extractGrid(entities, tx, ty); // 정확한 px 위치
+  // 버블 텍스트 수집
+  const bubbles: { raw: string; cx: number; cy: number }[] = [];
+  for (const e of entities) {
+    const et = (e.type || '').toUpperCase();
+    if (et !== 'TEXT' && et !== 'MTEXT') continue;
+    const raw = cleanText(e.text);
+    if (!raw || /[,]/.test(raw)) continue; // 치수 숫자(쉼표 포함) 제외
+    if (!(isBubbleLayer(e.layer) || /^[XY]\d{1,3}$/i.test(raw))) continue;
+    const pos = e.startPoint || e.position; if (!pos) continue;
+    bubbles.push({ raw, cx: tx(pos.x), cy: ty(pos.y) });
+  }
+  // 접두(X/Y)로 분류, 없으면 위치로 분류(상단=X세로축, 좌측=Y가로축)
+  let bx = bubbles.filter((b) => /^X/i.test(b.raw));
+  let by = bubbles.filter((b) => /^Y/i.test(b.raw));
+  if (!bx.length && !by.length && bubbles.length) {
+    const minCy = Math.min(...bubbles.map((b) => b.cy)), minCx = Math.min(...bubbles.map((b) => b.cx));
+    bx = bubbles.filter((b) => b.cy - minCy < 80); // 상단대 = 세로(X)축
+    by = bubbles.filter((b) => b.cx - minCx < 80); // 좌측대 = 가로(Y)축
+  }
+  const TOL = 18;
+  const labelLines = (linePos: number[], bub: { raw: string; cx: number; cy: number }[], key: 'cx' | 'cy') => {
+    const m = new Map<string, { pos: number; label: string }>();
+    for (const b of bub) {
+      if (!linePos.length) break;
+      const n = nearest(b[key], linePos);
+      if (n.dist <= TOL && !m.has(b.raw)) m.set(b.raw, { pos: n.val, label: b.raw });
+    }
+    return [...m.values()].sort((a, c) => a.pos - c.pos);
+  };
+  const xs = labelLines(lines.xs, bx, 'cx');
+  const ys = labelLines(lines.ys, by, 'cy');
+  if (xs.length || ys.length) return { xs, ys };
+  // 폴백: 버블 없음 → 선 자동번호 (X 좌→우, Y 하→상)
+  return {
+    xs: lines.xs.slice().sort((a, b) => a - b).map((pos, i) => ({ pos, label: `X${i + 1}` })),
+    ys: lines.ys.slice().sort((a, b) => b - a).map((pos, i) => ({ pos, label: `Y${i + 1}` })),
+  };
 };
 
 export interface ExtractResult {
@@ -162,10 +213,6 @@ export const extractMembersFromDxf = (
 };
 
 // ── P1: 정밀 구조모델 추출 (벽=축선+두께, 기둥=gridRef+단면) ──
-export interface GridLabeled {
-  xs: { pos: number; label: string }[]; // 캔버스 px, "X1"..
-  ys: { pos: number; label: string }[]; // 캔버스 px, "Y1"..(하→상)
-}
 export interface StructModelResult {
   members: StructureLineData[];
   grid: GridLabeled;
@@ -188,11 +235,9 @@ export const extractStructuralModel = (
   const maxPx = (opts?.wallMaxMm ?? 600) * scale;
   let idc = 0; const nid = (p: string) => `${p}_${Date.now().toString(36)}_${idc++}`;
 
-  // 그리드 + 자동 라벨 (X: 좌→우, Y: 하→상)
-  const g = extractGrid(entities, tx, ty);
-  const xs = g.xs.slice().sort((a, b) => a - b).map((pos, i) => ({ pos, label: `X${i + 1}` }));
-  const ys = g.ys.slice().sort((a, b) => b - a).map((pos, i) => ({ pos, label: `Y${i + 1}` }));
-  const grid: GridLabeled = { xs, ys };
+  // 그리드 + 라벨 (버블 TEXT 정합, 없으면 자동번호)
+  const grid = extractGridLabeled(entities, tx, ty);
+  const { xs, ys } = grid;
   const REF_TOL = 28;
   const gridRefOf = (cx: number, cy: number): string | undefined => {
     let xl: string | undefined, yl: string | undefined;
