@@ -1,8 +1,9 @@
 import React, { useRef } from 'react';
-import { MousePointer, PenTool, Square, Circle, Triangle, Eraser, Sparkles, Layers, Ruler, Undo2, ImagePlus, Bot, Loader2, PanelRightOpen, Grid3x3, HelpCircle } from 'lucide-react';
+import { MousePointer, PenTool, Square, Circle, Triangle, Eraser, Sparkles, Layers, Ruler, Undo2, ImagePlus, Bot, Loader2, PanelRightOpen, Grid3x3, HelpCircle, Download } from 'lucide-react';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { DrawingMode, StructureType } from '../types/drawing';
 import { extractCenterLinesFromWalls } from '../utils/geometry';
+import { buildDxf } from '../utils/dxfExport';
 import { fetchAIAnalysis } from '../utils/api';
 import { loadFile } from '../utils/fileLoader';
 import { useT, LANGS } from '../i18n';
@@ -56,6 +57,19 @@ export const Toolbar: React.FC = () => {
     const file = e.target.files?.[0];
     if (file) loadFile(file);
     e.target.value = '';
+  };
+
+  // 💾 구조 부재를 DXF로 저장 (DWG는 미지원)
+  const handleSaveDxf = () => {
+    const st = useDrawingStore.getState();
+    if (st.lines.length === 0) { alert(t('al.noExport')); return; }
+    const dxf = buildDxf(st.lines, st.dxfTransform);
+    const blob = new Blob([dxf], { type: 'application/dxf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'struxure_export.dxf'; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    alert(t('al.saveDone', st.lines.length));
   };
 
   const handleAIAnalysis = async () => {
@@ -144,6 +158,8 @@ export const Toolbar: React.FC = () => {
           <span className="text-zinc-500">1px=</span>
           <input type="number" value={scaleRatio} onChange={(e) => setScaleRatio(Number(e.target.value) || 1)} className="w-14 bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded outline-none text-center appearance-none"/>
         </div>
+
+        <button onClick={handleSaveDxf} disabled={lines.length === 0} title={t('tb.saveTip')} className={`flex items-center space-x-1 p-1.5 px-2 rounded-md transition-colors ${lines.length === 0 ? 'text-zinc-700' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'}`}><Download size={16} /><span className="text-xs">{t('tb.save')}</span></button>
 
         <button onClick={undoLine} disabled={lines.length === 0} className={`p-1.5 rounded-md transition-colors ${lines.length === 0 ? 'text-zinc-700' : 'text-zinc-300 hover:text-white hover:bg-zinc-800'}`}><Undo2 size={16} /></button>
 

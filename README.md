@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.21.0** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.22.0** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -169,6 +169,7 @@ export interface StructureLineData {
 - **버전 표시**: 화면 우측 하단에 버전/개발자/빌드일/커밋 자동 표기
 - **도움말 패널**: 상단 "도움말" → 좌측 패널에 기본 사용 방법 + 릴리즈 노트
 - **다국어(i18n)**: 한국어 / English / 繁體中文 전환 (상단 언어 선택기). 모든 UI·알림·도움말 번역, 시장(대만/동남아) 대응
+- **DXF 저장(내보내기)** [`dxfExport.ts`]: 상단 "저장" → 구조부재(벽·기둥·보·중심선)를 **월드(mm) DXF**로 다운로드(타입별 레이어 `S_WALL/S_COLUMN/...`, 회전 기둥은 폴리라인). ⚠️ **DWG 저장은 미지원**(LibreDWG WASM은 읽기 전용) — DXF로 저장 후 CAD에서 DWG 변환
 
 ### 🟡 부분 구현 / 대체 구현
 - **AI 백엔드**: `VITE_AI_API_URL` 환경변수로 실제 서버 연동 준비 완료, 미설정 시 **목(mock) 데이터**로 폴백 (실제 YOLOv8-seg 추론 서버는 미연동)
@@ -179,11 +180,17 @@ export interface StructureLineData {
 - **AI 추론 서버(YOLOv8-seg)**: 프론트 연동(`VITE_AI_API_URL`)은 준비됨, 실제 모델/서버는 미구축 (현재 목 데이터)
 - **선(LINE) 크기조절·회전**: 선은 정점 편집만(크기조절/회전 핸들 없음). AI 폴리곤은 비편집(가이드 표시 전용)
 - **DXF/DWG 일부 엔티티**: **HATCH(해치 채움)** 미렌더링. SPLINE은 맞춤점/제어점 폴리라인 근사(정밀 NURBS 평가 아님), DIMENSION은 익명 블록이 없는 경우 미표시
-- **이미지 전처리**(원근 보정/이진화), **데이터 내보내기/DB 연동**, **Phase 4 최적화**
+- **DWG 저장**: 미지원(LibreDWG WASM 읽기 전용). DXF 저장은 지원 → CAD에서 DWG 변환
+- **이미지 전처리**(원근 보정/이진화), **DB 연동**, **Phase 4 최적화**
 
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-23 — v0.22.0 (DXF 저장)
+- ✨ **`dxfExport.ts` + 저장 버튼**: 구조부재를 ASCII DXF(월드 mm, 타입별 레이어)로 내보내기. 회전 기둥=폴리라인 4모서리, 선/원/삼각형 지원, HEADER($INSUNITS=mm)+LAYER 테이블 포함
+- ℹ️ **DWG 저장은 미지원**(LibreDWG WASM 읽기 전용) → DXF 저장 후 CAD에서 변환 안내
+- 🔍 검증(Playwright, B1F): 89개 부재(LINE 39·LWPOLYLINE 50) DXF 생성, **내보낸 DXF 재로드(라운드트립) 정상 인식**, 에러 0
 
 ### 2026-06-23 — v0.21.0 (다국어: 한국어/English/繁體中文)
 - ✨ **i18n**: `src/i18n.ts` 사전 + `useT()` 훅 + store `lang`. 상단 언어 선택기로 즉시 전환
