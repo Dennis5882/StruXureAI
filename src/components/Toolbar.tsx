@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { MousePointer, PenTool, Square, Circle, Triangle, Eraser, Sparkles, Layers, Ruler, Undo2, ImagePlus, Bot, Loader2, PanelRightOpen, Grid3x3 } from 'lucide-react';
+import { MousePointer, PenTool, Square, Circle, Triangle, Eraser, Sparkles, Layers, Ruler, Undo2, ImagePlus, Bot, Loader2, PanelRightOpen, Grid3x3, HelpCircle } from 'lucide-react';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { DrawingMode, StructureType } from '../types/drawing';
 import { extractCenterLinesFromWalls } from '../utils/geometry';
@@ -11,8 +11,8 @@ export const Toolbar: React.FC = () => {
   const dxfInputRef = useRef<HTMLInputElement>(null);
   
   const {
-    currentMode, currentType, lines, unit, scaleRatio, backgroundImage, isAnalyzing, isSidebarOpen, gridSize,
-    setMode, setType, setUnit, setScaleRatio, undoLine, addLine, setAiPolygons, setIsAnalyzing, toggleSidebar, setGridSize
+    currentMode, currentType, lines, unit, scaleRatio, backgroundImage, isAnalyzing, isSidebarOpen, isHelpOpen, gridSize,
+    setMode, setType, setUnit, setScaleRatio, undoLine, addLine, setAiPolygons, setIsAnalyzing, toggleSidebar, toggleHelp, setGridSize
   } = useDrawingStore();
 
   // 🪄 벽체 쌍에서 중심선 자동 생성 (CAD 추출 벽은 px=mm×scale 이므로 두께 임계값을 scale로 환산)
@@ -72,6 +72,10 @@ export const Toolbar: React.FC = () => {
           <Layers className="text-indigo-500 w-5 h-5" />
           <span className="text-zinc-100 font-bold text-sm tracking-wider">StruXureAI</span>
         </div>
+
+        <button onClick={toggleHelp} title="도움말 / 릴리즈 노트" className={`flex items-center space-x-1.5 text-xs px-2 py-1.5 rounded-md transition-colors ${isHelpOpen ? 'bg-sky-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white'}`}>
+          <HelpCircle size={14} /><span>도움말</span>
+        </button>
         
         <input type="file" ref={fileInputRef} accept="image/*" hidden onChange={handleImageUpload} />
         <input type="file" ref={dxfInputRef} accept=".dxf,.dwg" hidden onChange={handleDxfUpload} />

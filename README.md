@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.19.0** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.20.0** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -167,6 +167,7 @@ export interface StructureLineData {
 - **파일 업로드**: 첨부 버튼 + **드래그앤드롭** (이미지/CAD 모두 지원)
 - **DWG 직접 열기**: 바이너리 DWG를 브라우저에서 LibreDWG(WASM)로 DXF 변환 후 렌더링 (백엔드 불필요, WASM은 DWG 열 때만 동적 로드)
 - **버전 표시**: 화면 우측 하단에 버전/개발자/빌드일/커밋 자동 표기
+- **도움말 패널**: 상단 "도움말" → 좌측 패널에 기본 사용 방법 + 릴리즈 노트
 
 ### 🟡 부분 구현 / 대체 구현
 - **AI 백엔드**: `VITE_AI_API_URL` 환경변수로 실제 서버 연동 준비 완료, 미설정 시 **목(mock) 데이터**로 폴백 (실제 YOLOv8-seg 추론 서버는 미연동)
@@ -182,6 +183,9 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-23 — v0.20.0 (도움말 패널)
+- ✨ **좌측 도움말 패널**: 상단 "도움말" 버튼 토글 → **기본 사용 방법(6단계)** + **릴리즈 노트**. 현재 버전 표기(`__APP_VERSION__`)
 
 ### 2026-06-23 — v0.19.0 (P4a: MIDAS Gen NX 내보내기 — 단일층)
 - ✨ **`midasExport.ts`**: 구조부재 → 월드(mm) 단일층 모델 → MIDAS NX Open API 요청 시퀀스(`/doc/new`→`unit`→`matl`→`sect`→`thik`→`node`→`elem`→`cons`→`/doc/save`)

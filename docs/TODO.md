@@ -1,7 +1,7 @@
 # StruXureAI — 진행상황 & 앞으로 할 일 (통합 기록)
 
 > 이 문서는 작업 핸드오프용 단일 기록. 대화가 압축돼도 여기서 맥락을 복구한다.
-> 기준 버전: **v0.19.0** · 갱신: 2026-06-23 · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.20.0** · 갱신: 2026-06-23 · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 함께 보기: [STRUCTURAL_MODEL.md](./STRUCTURAL_MODEL.md)(정밀추출 설계) · [MODULES.md](./MODULES.md)(OSS 조사)
 
 ---
