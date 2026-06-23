@@ -31,7 +31,7 @@ export const LayerSidebar: React.FC = () => {
     }
     st.addLines(members);
     st.setMode('SELECT');
-    alert(`정밀 구조모델 추출 완료\n· 벽 축선 ${counts.wallAxes}개 (두께 측정)\n· 기둥 ${counts.columns}개 (그리드 태깅 ${counts.columnsTagged}개)\n· 미매칭 벽 면선 ${counts.unpairedFaces}개 제외`);
+    alert(`정밀 구조모델 추출 완료\n· 벽 축선 ${counts.wallAxes}개 (두께 측정)\n· 기둥 ${counts.columns}개 (그리드 태깅 ${counts.columnsTagged}개)\n· 미매칭 벽 면선 ${counts.unpairedFaces}개 제외\n· 위상 정리: 절점 ${counts.nodes}개, 교차연장 ${counts.extended}, 기둥스냅 ${counts.snappedCol}`);
   };
 
   return (

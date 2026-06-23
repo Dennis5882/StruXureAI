@@ -16,6 +16,14 @@ const projParam = (p: Point2D, a: Point2D, b: Point2D) => {
   const ab = sub(b, a);
   return dot(sub(p, a), ab) / (dot(ab, ab) || 1);
 };
+// 두 무한직선(p1p2, p3p4)의 교점. 평행이면 null.
+const lineIntersect = (p1: Point2D, p2: Point2D, p3: Point2D, p4: Point2D): Point2D | null => {
+  const d1 = sub(p2, p1), d2 = sub(p4, p3);
+  const denom = d1.x * d2.y - d1.y * d2.x;
+  if (Math.abs(denom) < 1e-9) return null;
+  const t = ((p3.x - p1.x) * d2.y - (p3.y - p1.y) * d2.x) / denom;
+  return { x: p1.x + d1.x * t, y: p1.y + d1.y * t };
+};
 // 정렬된 값들을 tol 이내로 묶어 대표값(평균) 배열 반환
 const clusterValues = (vals: number[], tol: number): number[] => {
   const sorted = [...vals].sort((a, b) => a - b);
@@ -216,14 +224,17 @@ export const extractMembersFromDxf = (
 export interface StructModelResult {
   members: StructureLineData[];
   grid: GridLabeled;
-  counts: { wallAxes: number; columns: number; columnsTagged: number; unpairedFaces: number };
+  counts: {
+    wallAxes: number; columns: number; columnsTagged: number; unpairedFaces: number;
+    nodes: number; extended: number; snappedCol: number;
+  };
 }
 
 export const extractStructuralModel = (
   entities: any[],
   layers: { name: string; visible: boolean }[],
   t: DxfTransform,
-  opts?: { wallMinMm?: number; wallMaxMm?: number },
+  opts?: { wallMinMm?: number; wallMaxMm?: number; topology?: boolean; extendMm?: number; nodeMm?: number },
 ): StructModelResult => {
   const visible = new Map(layers.map((l) => [l.name, l.visible]));
   const tx = (x: number) => t.pad + (x - t.minX) * t.scale;
@@ -318,6 +329,11 @@ export const extractStructuralModel = (
     else kept.push({ ...c });
   }
 
+  // 위상 정리(P3): 벽 축선 끝점 → 기둥/교차점 연결 + 절점 그래프 (기둥 mm 산출 전, 벽만 변형)
+  const topo = opts?.topology === false
+    ? { extended: 0, snappedCol: 0, nodes: 0 }
+    : cleanupTopology(wallAxes, kept, scale, { extendMm: opts?.extendMm, nodeMm: opts?.nodeMm });
+
   const members: StructureLineData[] = [...wallAxes];
   let tagged = 0;
   for (const c of kept) {
@@ -329,7 +345,108 @@ export const extractStructuralModel = (
     });
   }
 
-  return { members, grid, counts: { wallAxes: wallAxes.length, columns: kept.length, columnsTagged: tagged, unpairedFaces: unpaired } };
+  return {
+    members, grid,
+    counts: {
+      wallAxes: wallAxes.length, columns: kept.length, columnsTagged: tagged, unpairedFaces: unpaired,
+      nodes: topo.nodes, extended: topo.extended, snappedCol: topo.snappedCol,
+    },
+  };
+};
+
+// ── P3: 위상 정리 (벽 축선 trim/extend + 기둥/교차점 절점화) ──
+// 벽 StructureLineData(line)의 끝점 좌표를 in-place로 수정하고 절점 ID(n0/n1)를 부여한다.
+export interface TopoStats { extended: number; snappedCol: number; nodes: number; }
+export const cleanupTopology = (
+  walls: StructureLineData[],
+  columns: { cx: number; cy: number; w: number; h: number }[],
+  scale: number,
+  opts?: { extendMm?: number; nodeMm?: number },
+): TopoStats => {
+  const s = scale || 1;
+  const EXT = (opts?.extendMm ?? 600) * s;   // 끝점 연장 허용 거리
+  const NODE = (opts?.nodeMm ?? 150) * s;    // 절점 클러스터 반경
+  const lineWalls = walls.filter((w) => (w.shape === 'line' || !w.shape) && w.coordinates.length >= 2);
+  const ends = (w: StructureLineData) => w.coordinates;
+  let extended = 0, snappedCol = 0;
+
+  // 1) 끝점 → 가까운 기둥 중심 스냅 (기둥 = 강한 절점). 스냅된 끝점은 잠금.
+  const lockedPos = new Map<string, Point2D>();
+  lineWalls.forEach((w, wi) => {
+    const c = ends(w);
+    for (let ei = 0; ei < 2; ei++) {
+      const p = c[ei];
+      let best = -1, bestD = Infinity;
+      columns.forEach((col, ci) => {
+        const tol = Math.max(col.w, col.h) / 2 + NODE;
+        const d = Math.hypot(col.cx - p.x, col.cy - p.y);
+        if (d <= tol && d < bestD) { bestD = d; best = ci; }
+      });
+      if (best >= 0) {
+        const col = columns[best];
+        c[ei] = { x: col.cx, y: col.cy };
+        lockedPos.set(`${wi}:${ei}`, { x: col.cx, y: col.cy });
+        snappedCol++;
+      }
+    }
+  });
+
+  // 2) 끝점 → 다른 축선과의 교점으로 extend/trim (L/T/+ 접합). 잠긴 끝점은 제외.
+  lineWalls.forEach((w, wi) => {
+    const c = ends(w);
+    for (let ei = 0; ei < 2; ei++) {
+      if (lockedPos.has(`${wi}:${ei}`)) continue;
+      const E = c[ei], F = c[1 - ei];
+      const angW = getAngle(E, F);
+      let bestX: Point2D | null = null, bestD = Infinity;
+      lineWalls.forEach((v, vi) => {
+        if (vi === wi) return;
+        const vc = ends(v);
+        let ad = Math.abs(angW - getAngle(vc[0], vc[1])); if (ad > Math.PI / 2) ad = Math.PI - ad;
+        if (ad < 0.15) return; // 거의 평행 → 동일선상 병합이 담당
+        const X = lineIntersect(E, F, vc[0], vc[1]);
+        if (!X) return;
+        const dE = Math.hypot(X.x - E.x, X.y - E.y);
+        if (dE > EXT || dE >= bestD) return;             // 연장거리 한계 / 더 가까운 후보 우선
+        if (Math.hypot(X.x - F.x, X.y - F.y) <= dE) return; // X가 E쪽이어야(반대끝 넘어가면 제외)
+        const lenV = getDistance(vc[0], vc[1]) || 1;
+        const u = projParam(X, vc[0], vc[1]);
+        const slack = EXT / lenV;
+        if (u < -slack || u > 1 + slack) return;          // X가 상대 축선 몸통/근처에 있어야
+        bestD = dE; bestX = { x: X.x, y: X.y };
+      });
+      if (bestX) { c[ei] = bestX; extended++; }
+    }
+  });
+
+  // 3) 끝점 클러스터 → 절점. 기둥에 잠긴 끝점이 포함되면 그 중심을 절점 위치로 고정.
+  type EP = { wi: number; ei: number };
+  const eps: EP[] = [];
+  lineWalls.forEach((_, wi) => { eps.push({ wi, ei: 0 }, { wi, ei: 1 }); });
+  const pos = (e: EP) => ends(lineWalls[e.wi])[e.ei];
+  const m = eps.length;
+  const parent = Array.from({ length: m }, (_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < m; i++) for (let j = i + 1; j < m; j++) {
+    const pi = pos(eps[i]), pj = pos(eps[j]);
+    if (Math.hypot(pi.x - pj.x, pi.y - pj.y) <= NODE) parent[find(i)] = find(j);
+  }
+  const groups = new Map<number, number[]>();
+  for (let i = 0; i < m; i++) { const r = find(i); (groups.get(r) ?? groups.set(r, []).get(r)!).push(i); }
+  let nodeId = 0, nodes = 0;
+  for (const idxs of groups.values()) {
+    let np: Point2D | null = null;
+    for (const i of idxs) { const lp = lockedPos.get(`${eps[i].wi}:${eps[i].ei}`); if (lp) { np = lp; break; } }
+    if (!np) np = { x: idxs.reduce((a, i) => a + pos(eps[i]).x, 0) / idxs.length, y: idxs.reduce((a, i) => a + pos(eps[i]).y, 0) / idxs.length };
+    const nid = `n${nodeId++}`;
+    if (idxs.length >= 2) nodes++;
+    for (const i of idxs) {
+      const w = lineWalls[eps[i].wi];
+      w.coordinates[eps[i].ei] = { x: np.x, y: np.y };
+      w.properties = { ...(w.properties || {}), [eps[i].ei === 0 ? 'n0' : 'n1']: nid };
+    }
+  }
+  return { extended, snappedCol, nodes };
 };
 
 // ── 동일선상 인접 중심선 병합 (연결성) ──────────────────────
