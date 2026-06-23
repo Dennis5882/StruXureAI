@@ -576,7 +576,10 @@ export const extractStructuralModel = (
     if (gl) { w.properties = { ...(w.properties || {}), gridLine: gl }; wallsLabeled++; }
   }
 
-  const members: StructureLineData[] = [...wallAxes, ...beams];
+  // T자 접합 절점화: 벽 끝점이 다른 벽 몸통에 닿으면 분할+스냅 → 접합부 좌표 공유(그래프/MIDAS 연결 완성)
+  const wallsFinal = opts?.topology === false ? wallAxes : splitWallsAtJunctions(wallAxes, 220 * scale);
+
+  const members: StructureLineData[] = [...wallsFinal, ...beams];
   let tagged = 0;
   for (const c of kept) {
     const ref = gridRefOf(c.cx, c.cy); if (ref) tagged++;
@@ -590,11 +593,52 @@ export const extractStructuralModel = (
   return {
     members, grid,
     counts: {
-      wallAxes: wallAxes.length, columns: kept.length, columnsTagged: tagged, unpairedFaces: unpaired,
+      wallAxes: wallsFinal.length, columns: kept.length, columnsTagged: tagged, unpairedFaces: unpaired,
       nodes: topo.nodes, extended: topo.extended, snappedCol: topo.snappedCol, wallsLabeled, beams: beams.length,
       quantized,
     },
   };
+};
+
+// ── T자 접합 절점화: 벽 끝점이 다른 벽 몸통(내부)에 닿으면 그 벽을 접합점에서 분할 + 끝점 스냅 ──
+// 결과: 접합부에서 좌표가 공유돼 평면도 그래프·MIDAS 절점 연결이 완성됨. 새 벽 배열을 반환.
+export const splitWallsAtJunctions = (walls: StructureLineData[], tol: number): StructureLineData[] => {
+  const n = walls.length;
+  const seg = (w: StructureLineData) => [w.coordinates[0], w.coordinates[1]] as [Point2D, Point2D];
+  const cuts: number[][] = walls.map(() => []); // 벽별 분할 파라미터 t
+  // 1) 각 벽 끝점을 가장 가까운 '다른 벽 내부'에 스냅하고, 그 벽에 분할점 기록
+  for (let wi = 0; wi < n; wi++) {
+    for (let ei = 0; ei < 2; ei++) {
+      const E = walls[wi].coordinates[ei];
+      let best = -1, bestD = tol, foot: Point2D | null = null;
+      for (let j = 0; j < n; j++) {
+        if (j === wi) continue;
+        const [A, B] = seg(walls[j]);
+        if (getDistance(E, A) < tol || getDistance(E, B) < tol) continue; // 끝점 근처는 코너(클러스터가 처리)
+        const f = perpFoot(E, A, B); const d = getDistance(E, f);
+        if (d >= bestD) continue;
+        const t = projParam(E, A, B); if (t < 0.04 || t > 0.96) continue; // 내부만 = T자
+        best = j; bestD = d; foot = f;
+      }
+      if (best >= 0 && foot) {
+        walls[wi].coordinates[ei] = { x: foot.x, y: foot.y }; // 가지 끝점을 관통벽 위로 스냅
+        cuts[best].push(projParam(foot, seg(walls[best])[0], seg(walls[best])[1]));
+      }
+    }
+  }
+  // 2) 기록된 분할점에서 관통벽을 분할
+  const out: StructureLineData[] = [];
+  for (let wi = 0; wi < n; wi++) {
+    const [A, B] = seg(walls[wi]);
+    const ts = [...new Set(cuts[wi].map((t) => Math.round(t * 1000) / 1000))].filter((t) => t > 0.01 && t < 0.99).sort((a, b) => a - b);
+    if (!ts.length) { out.push(walls[wi]); continue; }
+    const params = [0, ...ts, 1];
+    for (let k = 0; k < params.length - 1; k++) {
+      const at = (t: number): Point2D => ({ x: A.x + (B.x - A.x) * t, y: A.y + (B.y - A.y) * t });
+      out.push({ ...walls[wi], id: `${walls[wi].id}_s${k}`, coordinates: [at(params[k]), at(params[k + 1])] });
+    }
+  }
+  return out;
 };
 
 // ── P3: 위상 정리 (벽 축선 trim/extend + 기둥/교차점 절점화) ──
