@@ -1,7 +1,7 @@
 # StruXureAI — 진행상황 & 앞으로 할 일 (통합 기록)
 
 > 이 문서는 작업 핸드오프용 단일 기록. 대화가 압축돼도 여기서 맥락을 복구한다.
-> 기준 버전: **v0.20.0** · 갱신: 2026-06-23 · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.21.0** · 갱신: 2026-06-23 · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 함께 보기: [STRUCTURAL_MODEL.md](./STRUCTURAL_MODEL.md)(정밀추출 설계) · [MODULES.md](./MODULES.md)(OSS 조사)
 
 ---
@@ -27,6 +27,7 @@
 - **리사이즈 정합 버그수정**(v0.16.1): 추출 후 DXF 스케일 고정(`dxfFitRef`).
 - **두께 양자화 프리셋**(v0.18.0): `THICKNESS_PRESETS`(TW/KR) 주입형, 사이드바 "두께 표준" 선택. 측정값 ±50mm 표준 스냅, 원본 `*_measured_mm` 보존. (B1F TW: 4개 스냅)
 - **MIDAS Gen NX 내보내기(P4a, 단일층)**(v0.19.0) [`midasExport.ts`+`MidasExport.tsx`]: 구조부재→월드(mm)→MIDAS API 시퀀스(PUT /db/*, {Assign}). 기둥/보=BEAM, 벽=수직 PLATE(4점). API 전송(fetch)/JSON·Python 다운로드. 스키마=대만 RC 에이전트 live-verified. (B1F: 절점216·기둥50·벽39 검증)
+- **도움말 패널**(v0.20.0) + **다국어 i18n(한/영/번체)**(v0.21.0) [`i18n.ts`+`useT`+store `lang`]: 전 UI·알림·도움말 번역, 상단 언어 선택기. (ko/en/zh 전환·번체 추출 검증)
 - **운영**: Vercel 방문자 분석(@vercel/analytics), 재배포 stale-chunk 자동 새로고침, 버전 배지.
 - **문서**: MODULES.md, STRUCTURAL_MODEL.md(+Gemini 피드백), 발표 PPT(번체).
 

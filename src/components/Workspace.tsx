@@ -3,6 +3,7 @@ import * as fabric from 'fabric';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { loadFiles } from '../utils/fileLoader';
 import { Point2D } from '../types/drawing';
+import { useT } from '../i18n';
 
 // 그리드 스냅: g>0이면 가장 가까운 격자점으로 반올림
 const snapTo = (v: number, g: number): number => (g > 0 ? Math.round(v / g) * g : v);
@@ -72,6 +73,7 @@ export const Workspace: React.FC = () => {
   const [resizeTick, setResizeTick] = useState(0); // 영역 크기 변화 시 도면 재맞춤 트리거
 
   const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale, isLoadingFile, loadingMessage, gridSize } = useDrawingStore();
+  const { t } = useT();
 
   // ⌨️ 단축키(Ctrl+Z)로 실행 취소 기능 연동
   useEffect(() => {
@@ -820,17 +822,17 @@ export const Workspace: React.FC = () => {
       onDrop={handleDrop}
     >
       <div className="absolute bottom-4 left-4 z-10 bg-black/70 text-zinc-300 text-xs px-3 py-1.5 rounded pointer-events-none font-mono">
-        {currentMode === 'SELECT' && "💡 객체 클릭→이동/크기 조절 · 선은 노란 끝점을 끌어 편집 | [Alt+드래그] 이동 · [휠] 줌"}
-        {currentMode === 'DELETE' && "🧽 삭제 모드: 지울 객체를 클릭하세요. [Alt + 드래그] 이동 | [휠] 줌"}
-        {currentMode !== 'SELECT' && currentMode !== 'DELETE' && "✏️ 도형 및 선 그리기 모드. Ctrl+Z 실행취소 | [Alt + 드래그] 이동 | [휠] 줌"}
+        {currentMode === 'SELECT' && t('ws.hintSelect')}
+        {currentMode === 'DELETE' && t('ws.hintDelete')}
+        {currentMode !== 'SELECT' && currentMode !== 'DELETE' && t('ws.hintDraw')}
       </div>
       {/* 🖱️ 드래그앤드롭 오버레이 */}
       {isDragging && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-indigo-950/70 backdrop-blur-sm pointer-events-none">
           <div className="flex flex-col items-center space-y-3 border-2 border-dashed border-indigo-400 rounded-2xl px-12 py-10 bg-indigo-900/40">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#a5b4fc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            <div className="text-indigo-100 font-bold text-sm">여기에 파일을 놓으세요</div>
-            <div className="text-indigo-300/70 text-xs">이미지 (PNG/JPG 등) 또는 CAD (DXF/DWG)</div>
+            <div className="text-indigo-100 font-bold text-sm">{t('ws.dropTitle')}</div>
+            <div className="text-indigo-300/70 text-xs">{t('ws.dropSub')}</div>
           </div>
         </div>
       )}
@@ -839,7 +841,7 @@ export const Workspace: React.FC = () => {
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm">
           <div className="flex flex-col items-center space-y-4">
             <svg className="animate-spin" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-            <div className="text-indigo-200 text-sm font-medium">{loadingMessage || '불러오는 중...'}</div>
+            <div className="text-indigo-200 text-sm font-medium">{loadingMessage || t('ws.loading')}</div>
           </div>
         </div>
       )}

@@ -5,14 +5,16 @@ import { DrawingMode, StructureType } from '../types/drawing';
 import { extractCenterLinesFromWalls } from '../utils/geometry';
 import { fetchAIAnalysis } from '../utils/api';
 import { loadFile } from '../utils/fileLoader';
+import { useT, LANGS } from '../i18n';
 
 export const Toolbar: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dxfInputRef = useRef<HTMLInputElement>(null);
-  
+  const { t, lang } = useT();
+
   const {
     currentMode, currentType, lines, unit, scaleRatio, backgroundImage, isAnalyzing, isSidebarOpen, isHelpOpen, gridSize,
-    setMode, setType, setUnit, setScaleRatio, undoLine, addLine, setAiPolygons, setIsAnalyzing, toggleSidebar, toggleHelp, setGridSize
+    setMode, setType, setUnit, setScaleRatio, undoLine, addLine, setAiPolygons, setIsAnalyzing, toggleSidebar, toggleHelp, setGridSize, setLang
   } = useDrawingStore();
 
   // 🪄 벽체 쌍에서 중심선 자동 생성 (CAD 추출 벽은 px=mm×scale 이므로 두께 임계값을 scale로 환산)
@@ -21,27 +23,27 @@ export const Toolbar: React.FC = () => {
     // 실무 벽두께 약 60~600mm 범위를 캔버스 px로 변환 (수동 벽은 s=1로 적당한 px 범위)
     const centers = extractCenterLinesFromWalls(lines, 60 * s, 600 * s);
     if (centers.length === 0) {
-      alert('중심선을 생성할 벽체(WALL) 쌍을 찾지 못했습니다.\nCAD라면 먼저 "구조 부재 추출"로 벽을 가져오거나, 마주보는 벽 두 개를 그려주세요.');
+      alert(t('al.noCenterline'));
       return;
     }
     centers.forEach((c) => addLine(c));
-    alert(`중심선 ${centers.length}개 생성 완료`);
+    alert(t('al.centerlineDone', centers.length));
   };
 
-  const modes: { id: DrawingMode; label: string; icon: React.ReactNode }[] = [
-    { id: 'SELECT', label: '이동/선택', icon: <MousePointer size={18} /> },
-    { id: 'DRAW_LINE', label: '선', icon: <PenTool size={18} /> },
-    { id: 'DRAW_RECT', label: '사각형', icon: <Square size={18} /> },
-    { id: 'DRAW_CIRCLE', label: '원', icon: <Circle size={18} /> },
-    { id: 'DRAW_TRIANGLE', label: '삼각형', icon: <Triangle size={18} /> },
-    { id: 'DELETE', label: '지우개 (클릭하여 삭제)', icon: <Eraser size={18} /> },
+  const modes: { id: DrawingMode; icon: React.ReactNode }[] = [
+    { id: 'SELECT', icon: <MousePointer size={18} /> },
+    { id: 'DRAW_LINE', icon: <PenTool size={18} /> },
+    { id: 'DRAW_RECT', icon: <Square size={18} /> },
+    { id: 'DRAW_CIRCLE', icon: <Circle size={18} /> },
+    { id: 'DRAW_TRIANGLE', icon: <Triangle size={18} /> },
+    { id: 'DELETE', icon: <Eraser size={18} /> },
   ];
 
-  const structureTypes: { id: StructureType; label: string; color: string }[] = [
-    { id: 'WALL', label: '벽체 (Wall)', color: 'bg-red-500' },
-    { id: 'COLUMN', label: '기둥 (Column)', color: 'bg-blue-500' },
-    { id: 'BEAM', label: '보 (Beam)', color: 'bg-green-500' },
-    { id: 'CENTER_LINE', label: '중심선 (Center)', color: 'bg-amber-500' },
+  const structureTypes: { id: StructureType; color: string }[] = [
+    { id: 'WALL', color: 'bg-red-500' },
+    { id: 'COLUMN', color: 'bg-blue-500' },
+    { id: 'BEAM', color: 'bg-green-500' },
+    { id: 'CENTER_LINE', color: 'bg-amber-500' },
   ];
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -57,12 +59,12 @@ export const Toolbar: React.FC = () => {
   };
 
   const handleAIAnalysis = async () => {
-    if (!backgroundImage) return alert("도면 이미지를 먼저 불러와주세요.");
+    if (!backgroundImage) return alert(t('al.needImage'));
     setIsAnalyzing(true);
     try {
       const result = await fetchAIAnalysis(backgroundImage);
       setAiPolygons(result);
-    } catch (error) { alert("AI 서버 통신 오류"); } finally { setIsAnalyzing(false); }
+    } catch (error) { alert(t('al.aiError')); } finally { setIsAnalyzing(false); }
   };
 
   return (
@@ -73,32 +75,39 @@ export const Toolbar: React.FC = () => {
           <span className="text-zinc-100 font-bold text-sm tracking-wider">StruXureAI</span>
         </div>
 
-        <button onClick={toggleHelp} title="도움말 / 릴리즈 노트" className={`flex items-center space-x-1.5 text-xs px-2 py-1.5 rounded-md transition-colors ${isHelpOpen ? 'bg-sky-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white'}`}>
-          <HelpCircle size={14} /><span>도움말</span>
+        <button onClick={toggleHelp} title={t('tb.help')} className={`flex items-center space-x-1.5 text-xs px-2 py-1.5 rounded-md transition-colors ${isHelpOpen ? 'bg-sky-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white'}`}>
+          <HelpCircle size={14} /><span>{t('tb.help')}</span>
         </button>
+
+        {/* 🌐 언어 선택 */}
+        <div className="flex items-center bg-zinc-950 p-0.5 rounded-md border border-zinc-800">
+          {LANGS.map((l) => (
+            <button key={l.id} onClick={() => setLang(l.id)} className={`text-[11px] px-1.5 py-1 rounded transition-colors ${lang === l.id ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>{l.label}</button>
+          ))}
+        </div>
         
         <input type="file" ref={fileInputRef} accept="image/*" hidden onChange={handleImageUpload} />
         <input type="file" ref={dxfInputRef} accept=".dxf,.dwg" hidden onChange={handleDxfUpload} />
         
         <div className="flex items-center space-x-1.5 bg-zinc-950 p-1 rounded-md border border-zinc-800">
-          <button onClick={() => fileInputRef.current?.click()} className="flex items-center space-x-1.5 text-xs bg-zinc-800 text-zinc-300 px-2 py-1.5 rounded hover:bg-zinc-700 hover:text-white transition-colors"><ImagePlus size={14} /><span>이미지</span></button>
-          <button onClick={() => dxfInputRef.current?.click()} className="flex items-center space-x-1.5 text-xs bg-zinc-800 text-zinc-300 px-2 py-1.5 rounded hover:bg-zinc-700 hover:text-white transition-colors"><Layers size={14} /><span>CAD</span></button>
+          <button onClick={() => fileInputRef.current?.click()} className="flex items-center space-x-1.5 text-xs bg-zinc-800 text-zinc-300 px-2 py-1.5 rounded hover:bg-zinc-700 hover:text-white transition-colors"><ImagePlus size={14} /><span>{t('tb.image')}</span></button>
+          <button onClick={() => dxfInputRef.current?.click()} className="flex items-center space-x-1.5 text-xs bg-zinc-800 text-zinc-300 px-2 py-1.5 rounded hover:bg-zinc-700 hover:text-white transition-colors"><Layers size={14} /><span>{t('tb.cad')}</span></button>
         </div>
 
         <button onClick={handleAIAnalysis} disabled={isAnalyzing || !backgroundImage} className={`flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-md transition-all ${isAnalyzing ? 'bg-zinc-700 text-zinc-400' : !backgroundImage ? 'bg-emerald-900/30 text-emerald-700/50' : 'bg-emerald-600 text-white hover:bg-emerald-500'}`}>
           {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />}
-          <span>{isAnalyzing ? 'AI 분석 중...' : 'AI 인식'}</span>
+          <span>{isAnalyzing ? t('tb.aiBusy') : t('tb.ai')}</span>
         </button>
 
-        <button onClick={handleGenerateCenterLines} disabled={lines.length === 0} title="벽체 쌍에서 중심선 자동 생성" className={`flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-md transition-all ${lines.length === 0 ? 'bg-amber-900/30 text-amber-700/50' : 'bg-amber-600/90 text-white hover:bg-amber-500'}`}>
+        <button onClick={handleGenerateCenterLines} disabled={lines.length === 0} title={t('tb.centerlineTip')} className={`flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-md transition-all ${lines.length === 0 ? 'bg-amber-900/30 text-amber-700/50' : 'bg-amber-600/90 text-white hover:bg-amber-500'}`}>
           <Sparkles size={14} />
-          <span>중심선 자동</span>
+          <span>{t('tb.centerline')}</span>
         </button>
       </div>
 
       <div className="flex items-center bg-zinc-950 p-1 rounded-lg border border-zinc-800">
         {modes.map((m) => (
-          <button key={m.id} onClick={() => setMode(m.id)} title={m.label} className={`flex items-center justify-center p-1.5 px-2 rounded-md transition-all ${currentMode === m.id ? 'bg-indigo-600 text-white shadow-md' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'}`}>{m.icon}</button>
+          <button key={m.id} onClick={() => setMode(m.id)} title={t(`mode.${m.id}`)} className={`flex items-center justify-center p-1.5 px-2 rounded-md transition-all ${currentMode === m.id ? 'bg-indigo-600 text-white shadow-md' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'}`}>{m.icon}</button>
         ))}
       </div>
 
@@ -106,19 +115,19 @@ export const Toolbar: React.FC = () => {
         {/* 🧱 부재 선택 메뉴 (그리기 모드에서만 표시) — 벽체/기둥/보/중심선 */}
         {currentMode.startsWith('DRAW_') && (
           <div className="flex items-center space-x-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 text-xs">
-            {structureTypes.map((t) => (
-              <button key={t.id} onClick={() => setType(t.id)} className={`px-2 py-1 rounded transition-all flex items-center space-x-1.5 ${currentType === t.id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}>
-                <span className={`w-2 h-2 rounded-full ${t.color}`} /><span>{t.label}</span>
+            {structureTypes.map((s) => (
+              <button key={s.id} onClick={() => setType(s.id)} className={`px-2 py-1 rounded transition-all flex items-center space-x-1.5 ${currentType === s.id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                <span className={`w-2 h-2 rounded-full ${s.color}`} /><span>{t(`st.${s.id}`)}</span>
               </button>
             ))}
           </div>
         )}
 
         {/* 📏 그리드 스냅 (격자 간격 선택, 0=끄기) */}
-        <div className="flex items-center space-x-1 bg-zinc-950 p-1 px-2 rounded-lg border border-zinc-800 text-xs" title="그리기/이동 시 격자에 맞춤(스냅)">
+        <div className="flex items-center space-x-1 bg-zinc-950 p-1 px-2 rounded-lg border border-zinc-800 text-xs" title={t('tb.gridSnapTip')}>
           <Grid3x3 size={14} className={gridSize > 0 ? 'text-indigo-400' : 'text-zinc-500'} />
           <select value={gridSize} onChange={(e) => setGridSize(Number(e.target.value))} className={`bg-transparent font-bold outline-none cursor-pointer ${gridSize > 0 ? 'text-indigo-400' : 'text-zinc-500'}`}>
-            <option value={0}>끄기</option>
+            <option value={0}>{t('tb.gridOff')}</option>
             <option value={10}>10</option>
             <option value={20}>20</option>
             <option value={50}>50</option>
@@ -141,7 +150,7 @@ export const Toolbar: React.FC = () => {
         <div className="w-px h-5 bg-zinc-800 mx-1"></div>
 
         {/* 🚨 여기 toggleSidebar 이벤트 연결! */}
-        <button onClick={toggleSidebar} className={`p-1.5 rounded-md transition-colors ${isSidebarOpen ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`} title="레이어 사이드바 열기/닫기">
+        <button onClick={toggleSidebar} className={`p-1.5 rounded-md transition-colors ${isSidebarOpen ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`} title={t('tb.sidebar')}>
           <PanelRightOpen size={16} />
         </button>
       </div>

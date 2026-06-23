@@ -42,6 +42,7 @@ interface DrawingState {
   dxfTransform: DxfTransform | null;
   isSidebarOpen: boolean;
   isHelpOpen: boolean;
+  lang: 'ko' | 'en' | 'zh';
 
   // ⏳ 파일 로딩(DWG 변환 등) 상태
   isLoadingFile: boolean;
@@ -65,6 +66,7 @@ interface DrawingState {
   toggleDxfLayer: (name: string) => void;
   toggleSidebar: () => void;
   toggleHelp: () => void;
+  setLang: (lang: 'ko' | 'en' | 'zh') => void;
   setLoadingFile: (loading: boolean, message?: string) => void;
 
   addLine: (line: Omit<StructureLineData, 'id'> | StructureLineData) => void;
@@ -102,6 +104,7 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   dxfTransform: null,
   isSidebarOpen: false,
   isHelpOpen: false,
+  lang: 'ko',
   isLoadingFile: false,
   loadingMessage: '',
 
@@ -127,6 +130,7 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   })),
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   toggleHelp: () => set((state) => ({ isHelpOpen: !state.isHelpOpen })),
+  setLang: (lang) => set({ lang }),
   setLoadingFile: (isLoadingFile, loadingMessage = '') => set({ isLoadingFile, loadingMessage }),
 
   addLine: (line) => set((state) => {
