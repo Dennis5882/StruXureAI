@@ -277,7 +277,7 @@ export interface StructModelResult {
   grid: GridLabeled;
   counts: {
     wallAxes: number; columns: number; columnsTagged: number; unpairedFaces: number;
-    nodes: number; extended: number; snappedCol: number;
+    nodes: number; extended: number; snappedCol: number; wallsLabeled: number;
   };
 }
 
@@ -384,6 +384,21 @@ export const extractStructuralModel = (
     ? { extended: 0, snappedCol: 0, nodes: 0 }
     : cleanupTopology(wallAxes, kept, scale, { extendMm: opts?.extendMm, nodeMm: opts?.nodeMm });
 
+  // 벽 축선 통심선(gridLine) 라벨링: 축에 평행·근접한 그리드선 매칭 (수직벽→X통심, 수평벽→Y통심)
+  const GLINE_TOL = 14;
+  const nearestLabel = (v: number, arr: { pos: number; label: string }[]): string | undefined => {
+    if (!arr.length) return undefined;
+    const n = arr.reduce((b, a) => (Math.abs(a.pos - v) < Math.abs(b.pos - v) ? a : b));
+    return Math.abs(n.pos - v) <= GLINE_TOL ? n.label : undefined;
+  };
+  let wallsLabeled = 0;
+  for (const w of wallAxes) {
+    const a = w.coordinates[0], b = w.coordinates[1]; if (!a || !b) continue;
+    const dx = Math.abs(a.x - b.x), dy = Math.abs(a.y - b.y);
+    const gl = dy >= dx ? nearestLabel((a.x + b.x) / 2, xs) : nearestLabel((a.y + b.y) / 2, ys);
+    if (gl) { w.properties = { ...(w.properties || {}), gridLine: gl }; wallsLabeled++; }
+  }
+
   const members: StructureLineData[] = [...wallAxes];
   let tagged = 0;
   for (const c of kept) {
@@ -399,7 +414,7 @@ export const extractStructuralModel = (
     members, grid,
     counts: {
       wallAxes: wallAxes.length, columns: kept.length, columnsTagged: tagged, unpairedFaces: unpaired,
-      nodes: topo.nodes, extended: topo.extended, snappedCol: topo.snappedCol,
+      nodes: topo.nodes, extended: topo.extended, snappedCol: topo.snappedCol, wallsLabeled,
     },
   };
 };
