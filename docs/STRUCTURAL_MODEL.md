@@ -136,8 +136,8 @@ interface BuildingModel {
 
 ### 4.2 기둥 (Column)
 1. 기둥 레이어 엔티티 → 정점 수집.
-2. **최소면적 사각형**(rotating calipers 또는 PCA)으로 center·width·depth·rotation 산출
-   (정렬 안 된 기둥/사선 기둥 대응).
+2. **최소면적 사각형**(rotating calipers)으로 center·width·depth·rotation 산출
+   (정렬 안 된 기둥/사선 기둥 대응). ✅ 구현 `minAreaRect`(v0.15.0): 볼록껍질 변 방향 투영 최소면적, 각도 (-45,45] 정규화·직교 스냅.
 3. `gridRef` = 가장 가까운 X라벨 + Y라벨 (tol 내).
 4. 중복 제거(center 근접), 그리드 교점 스냅(가까울 때만).
 

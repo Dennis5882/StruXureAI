@@ -115,10 +115,12 @@ export const Workspace: React.FC = () => {
       const color = colorMap[line.type] || '#ffffff';
       let obj: fabric.Object;
       if (line.shape === 'rect') {
-        // 사각형(기둥 등): fabric 네이티브 선택/이동/크기조절
+        // 사각형(기둥 등): 중심 기준 + 회전(rotation_deg) 적용. 사선 기둥도 정확한 단면으로 렌더.
         obj = new fabric.Rect({
-          left: Math.min(a.x, b.x), top: Math.min(a.y, b.y),
+          left: (a.x + b.x) / 2, top: (a.y + b.y) / 2,
           width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y),
+          angle: line.properties?.rotation_deg || 0,
+          originX: 'center', originY: 'center',
           stroke: color, strokeWidth: line.thickness || 2, fill: 'transparent',
           selectable: selMode, evented: selMode,
         });

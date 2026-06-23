@@ -42,6 +42,57 @@ const nearest = (v: number, arr: number[]): { val: number; dist: number } => {
   return { val: bv, dist: best };
 };
 
+// 볼록껍질 (Andrew's monotone chain) — 반시계
+const convexHull = (pts: Point2D[]): Point2D[] => {
+  const p = [...pts].sort((a, b) => (a.x - b.x) || (a.y - b.y));
+  if (p.length < 3) return p;
+  const cross = (o: Point2D, a: Point2D, b: Point2D) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: Point2D[] = [];
+  for (const q of p) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop(); lower.push(q); }
+  const upper: Point2D[] = [];
+  for (let i = p.length - 1; i >= 0; i--) { const q = p[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop(); upper.push(q); }
+  lower.pop(); upper.pop();
+  return lower.concat(upper);
+};
+
+// 최소면적 직사각형 (회전 캘리퍼스: 껍질 각 변 방향으로 투영해 최소 면적 탐색)
+// 반환: 중심(cx,cy), 변(w,h), 각도(deg, 캔버스 기준 (-45,45], 직교는 0으로 스냅)
+export const minAreaRect = (
+  pts: Point2D[],
+): { cx: number; cy: number; w: number; h: number; deg: number } | null => {
+  const hull = convexHull(pts);
+  if (hull.length < 2) {
+    // 점이 2개뿐이면 AABB 폴백
+    let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+    for (const p of pts) { if (p.x < mnx) mnx = p.x; if (p.x > mxx) mxx = p.x; if (p.y < mny) mny = p.y; if (p.y > mxy) mxy = p.y; }
+    if (!isFinite(mnx)) return null;
+    return { cx: (mnx + mxx) / 2, cy: (mny + mxy) / 2, w: mxx - mnx, h: mxy - mny, deg: 0 };
+  }
+  let best: { area: number; cx: number; cy: number; w: number; h: number; ang: number } | null = null;
+  for (let i = 0; i < hull.length; i++) {
+    const a = hull[i], b = hull[(i + 1) % hull.length];
+    const ex = { x: b.x - a.x, y: b.y - a.y }; const len = Math.hypot(ex.x, ex.y) || 1;
+    const ux = { x: ex.x / len, y: ex.y / len }; const uy = { x: -ux.y, y: ux.x };
+    let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+    for (const p of hull) {
+      const du = p.x * ux.x + p.y * ux.y, dv = p.x * uy.x + p.y * uy.y;
+      if (du < minU) minU = du; if (du > maxU) maxU = du; if (dv < minV) minV = dv; if (dv > maxV) maxV = dv;
+    }
+    const w = maxU - minU, h = maxV - minV, area = w * h;
+    if (!best || area < best.area) {
+      const cu = (minU + maxU) / 2, cv = (minV + maxV) / 2;
+      best = { area, cx: cu * ux.x + cv * uy.x, cy: cu * ux.y + cv * uy.y, w, h, ang: Math.atan2(ux.y, ux.x) };
+    }
+  }
+  if (!best) return null;
+  // 각도를 (-45,45]로 정규화 (90° 회전 = w/h 교환과 동치) + 직교 스냅
+  let deg = best.ang * 180 / Math.PI, w = best.w, h = best.h;
+  while (deg > 45) { deg -= 90; [w, h] = [h, w]; }
+  while (deg <= -45) { deg += 90; [w, h] = [h, w]; }
+  if (Math.abs(deg) < 1.5) deg = 0;
+  return { cx: best.cx, cy: best.cy, w, h, deg };
+};
+
 // ── 레이어 분류 ─────────────────────────────────────────────
 // 조적벽(비내력)은 구조 부재에서 제외 (벽 키워드보다 먼저 판정)
 const classifyLayer = (name: string): StructureType | null => {
@@ -257,9 +308,9 @@ export const extractStructuralModel = (
     return xl && yl ? `${xl}-${yl}` : (xl || yl);
   };
 
-  // 엔티티 수집: 벽 면선(px), 기둥 bbox(px)
+  // 엔티티 수집: 벽 면선(px), 기둥 최소면적사각형(px, 회전 포함)
   const faces: { a: Point2D; b: Point2D }[] = [];
-  type Col = { cx: number; cy: number; w: number; h: number; layer: string };
+  type Col = { cx: number; cy: number; w: number; h: number; deg: number; layer: string };
   const cols: Col[] = [];
   for (const e of entities) {
     const cls = classifyLayer(e.layer);
@@ -267,11 +318,10 @@ export const extractStructuralModel = (
     if (visible.get(e.layer) === false) continue;
     if (cls === 'COLUMN') {
       const pts = entityPoints(e); if (pts.length < 2) continue;
-      let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
-      for (const p of pts) { if (p.x < mnx) mnx = p.x; if (p.x > mxx) mxx = p.x; if (p.y < mny) mny = p.y; if (p.y > mxy) mxy = p.y; }
-      if (mxx - mnx < 1e-6 || mxy - mny < 1e-6) continue;
-      const x1 = tx(mnx), x2 = tx(mxx), y1 = ty(mxy), y2 = ty(mny);
-      cols.push({ cx: (x1 + x2) / 2, cy: (y1 + y2) / 2, w: Math.abs(x2 - x1), h: Math.abs(y2 - y1), layer: e.layer });
+      // 캔버스 px로 변환 후 최소면적 직사각형 → 사선 기둥도 정확한 단면·회전
+      const r = minAreaRect(pts.map((p) => ({ x: tx(p.x), y: ty(p.y) })));
+      if (!r || r.w < 1e-6 || r.h < 1e-6) continue;
+      cols.push({ cx: r.cx, cy: r.cy, w: r.w, h: r.h, deg: r.deg, layer: e.layer });
       continue;
     }
     const et = (e.type || '').toUpperCase();
@@ -341,7 +391,7 @@ export const extractStructuralModel = (
     members.push({
       id: nid('col'), source: 'CAD', type: 'COLUMN', shape: 'rect',
       coordinates: [{ x: c.cx - c.w / 2, y: c.cy - c.h / 2 }, { x: c.cx + c.w / 2, y: c.cy + c.h / 2 }],
-      thickness: 2, properties: { fromCad: true, gridRef: ref, width_mm: round5(toMm(c.w)), depth_mm: round5(toMm(c.h)) },
+      thickness: 2, properties: { fromCad: true, gridRef: ref, width_mm: round5(toMm(c.w)), depth_mm: round5(toMm(c.h)), rotation_deg: c.deg },
     });
   }
 
