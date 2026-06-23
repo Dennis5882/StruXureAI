@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.25.0** · 검증일: **2026-06-24** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.25.1** · 검증일: **2026-06-24** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -187,6 +187,11 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-24 — v0.25.1 (기둥 위치 정밀화 버그수정)
+- 🐞 **기둥 그리드 스냅/중복제거 상수가 px 고정값**(20/10)이라 축척에 따라 ~1.6m로 과도 스냅돼 기둥 중심을 오배치하던 문제 → **mm 기반(scale 환산, SNAP 150mm·DEDUP 120mm)**으로 수정. 기둥이 실제 위치에 놓임
+- 🔧 품질 점검용 디버그 훅: `?debug=1`일 때만 스토어 노출(프로덕션 무영향)
+- 🔍 검증(Playwright, B1F): 원본 50 기둥 대비 매칭 누락 25→**0**, 중복 0, gridRef 50/50 유지
 
 ### 2026-06-24 — v0.25.0 (단일선 벽 회복: 커버리지 89%→96%)
 - ✨ **단일선 벽 회복**: 짝이 전혀 없는(이중선 아님) 0.5m+ 벽 면선을 중심선으로 채택(기본두께=측정 중앙값, `singleLine` 플래그). **중복 방지 2중 가드** — 이중선 벽의 면(`hasPartner`)·기존 축선에 덮인 면(`coveredByAxis`)은 제외

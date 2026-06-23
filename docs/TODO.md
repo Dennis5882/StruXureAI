@@ -1,7 +1,7 @@
 # StruXureAI — 진행상황 & 앞으로 할 일 (통합 기록)
 
 > 이 문서는 작업 핸드오프용 단일 기록. 대화가 압축돼도 여기서 맥락을 복구한다.
-> 기준 버전: **v0.25.0** · 갱신: 2026-06-24 · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.25.1** · 갱신: 2026-06-24 · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 🌟 북극성: **구조 평면도를 제대로 만들기 + 그 이후를 위한 기반 다지기** (추출 정확도·데이터 기반 우선; 해석/AI는 그 위에)
 > 함께 보기: [ROADMAP.md](./ROADMAP.md)(단계별 로드맵·추천경로) · [STRUCTURAL_MODEL.md](./STRUCTURAL_MODEL.md)(정밀추출 설계) · [MODULES.md](./MODULES.md)(OSS 조사)
 
@@ -21,7 +21,9 @@
 - **DWG/DXF 열기·렌더**: libredwg-web(WASM, DWG→DXF), INSERT(블록)/DIMENSION/SPLINE/ARC/ELLIPSE/TEXT 렌더, 레이어 사이드바+자동필터, 드래그앤드롭.
 - **편집**: 그리드 스냅, fabric 네이티브 선택·이동·**크기조절·회전**(`setCoords` 누락이 원인이었음), 선 정점(vertex) 편집, 지우개.
 - **정밀 구조모델 추출(P1)**: 벽=**축선+두께(mm)**, 기둥=**bbox+단면(mm)+gridRef**, 그리드 추출 + **버블 라벨 정합**(X1~X10/Y1~Y8), 조적 제외, 중복정리, 그리드스냅, 중심선 연결성 병합.
-- **벽 추출 정확도↑(v0.24.0)**: 상호최근접 면쌍 매칭 + 매칭전 동일선상 면 병합(`mergeCollinearFaces`) + 두께상한 800mm. **CON_WALL 커버리지 73%→89%**(B1F). 품질 점검 하네스: `scratchpad/pw/audit.mjs`·`analyze_walls.mjs`(스토어 `window.__store` 임시노출 필요).
+- **벽 추출 정확도↑(v0.24~0.25)**: 상호최근접 면쌍 매칭 + 매칭전 면 병합(`mergeCollinearFaces`) + 두께상한 800 + 단일선 벽 회복(중복가드). **CON_WALL 커버리지 73%→96%**.
+- **기둥 위치 정밀화(v0.25.1)**: 스냅/중복 상수 px→mm(scale) 환산. 기둥 오배치(누락 25→0) 수정.
+- 품질 점검 하네스: `scratchpad/pw/audit.mjs`·`analyze_walls.mjs`·`audit_cols.mjs`. **앱 `?debug=1`로 `window.__store` 노출**(영구, 프로덕션 무영향).
 - **위상 정리(P3)** [`cleanupTopology`]: 벽 축선 끝점 → 기둥 중심/축선 교차점 연결(extend/trim), 근접 끝점 절점 클러스터링 + `n0/n1` 절점 ID → 절점-부재 그래프. (B1F 검증: 39벽 전부 태깅, 접합 절점 14, 연장 40, 기둥스냅 7)
 - **기둥 회전/단면 정밀화** [`minAreaRect`]: 최소면적 직사각형으로 사선 기둥 단면(width/depth)·회전각(`rotation_deg`) 산출 + 오리엔트 렌더. (단위검증 30°/70°, B1F 50기둥 무회귀)
 - **벽 통심선(gridLine) 라벨링**: 벽 축선을 평행·근접 그리드선에 매칭 → `gridLine` 속성. (B1F 39벽 중 21개 라벨)

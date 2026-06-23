@@ -542,7 +542,8 @@ export const extractStructuralModel = (
   }
 
   // 기둥: 그리드 스냅 + 중복 제거 + gridRef/단면(mm)
-  const SNAP = 20, DEDUP = 10;
+  // ⚠️ mm 기반(scale 환산). 과거 px 고정값(20/10)은 축척에 따라 1m+로 과도 스냅돼 기둥을 오배치시켰음.
+  const SNAP = 150 * scale, DEDUP = 120 * scale; // 그리드 근접(≤150mm)만 스냅, 중복(≤120mm)만 병합
   const xpos = xs.map((o) => o.pos), ypos = ys.map((o) => o.pos);
   for (const c of cols) {
     if (xpos.length) { const n = nearest(c.cx, xpos); if (n.dist <= SNAP) c.cx = n.val; }
