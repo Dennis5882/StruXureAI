@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.26.0** · 검증일: **2026-06-24** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.27.0** · 검증일: **2026-06-24** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -187,6 +187,12 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-24 — v0.27.0 (데이터 기반 정식화: 월드 mm 구조모델·절점-부재 그래프)
+- ✨ **`src/types/structural.ts`** 스키마: Node/Column/Wall/Beam/GridAxis/FloorModel/BuildingModel (전부 월드 mm, 부재는 **절점 id 참조**)
+- ✨ **`buildStructuralModel`**(+`canvasToWorld`/`worldToCanvas` 단일 가교): 추출 부재(px)+그리드 → **FloorModel**(절점 통합 그래프). 접합부 좌표 공유 → 절점 공유. store `model`에 저장
+- 🔍 검증(Playwright, B1F): 절점 144·기둥 50·벽 67, **부재→절점 참조 무결성 100%**(dangling 0), 공유 절점 38, 그리드 10X+8Y, 좌표 mm. 에러 0
+- 📌 의미: 캔버스 px(렌더/편집)와 분리된 **해석·층조립·MIDAS의 단일 진실 소스** 확보 (다음: 소비처가 model을 직접 사용)
 
 ### 2026-06-24 — v0.26.0 (T자 접합 절점화: 연결성↑)
 - ✨ **`splitWallsAtJunctions`**: 벽 끝점이 다른 벽 몸통(내부)에 닿으면 그 벽을 접합점에서 분할 + 끝점 스냅 → **접합부 좌표 공유**(평면도 그래프·MIDAS PLATE 절점 연결 완성)

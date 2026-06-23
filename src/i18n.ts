@@ -67,6 +67,7 @@ const D: Record<string, Entry> = {
   'ls.rUnpaired': { ko: '· 미매칭 벽 면선 {0}개 제외', en: '· {0} unpaired wall faces excluded', zh: '· 排除未配對牆面線 {0} 條' },
   'ls.rTopo': { ko: '· 위상 정리: 절점 {0}개, 교차연장 {1}, 기둥스냅 {2}', en: '· Topology: {0} nodes, {1} extended, {2} column-snaps', zh: '· 拓樸整理：節點 {0}、交點延伸 {1}、柱對齊 {2}' },
   'ls.rQuant': { ko: '· 두께 양자화({0}): {1}개 표준치 스냅', en: '· Quantize ({0}): {1} snapped to standard', zh: '· 厚度量化（{0}）：{1} 對齊標準值' },
+  'ls.rModel': { ko: '· 구조모델: 절점 {0} · 부재 {1} (월드 mm 그래프)', en: '· Model: {0} nodes · {1} members (world-mm graph)', zh: '· 結構模型：節點 {0} · 構件 {1}（世界 mm 圖）' },
 
   // ── MIDAS Export ──
   'mx.title': { ko: 'MIDAS Gen NX 내보내기', en: 'MIDAS Gen NX Export', zh: 'MIDAS Gen NX 匯出' },

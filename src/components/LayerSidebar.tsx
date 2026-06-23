@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { extractStructuralModel, ThicknessProfile } from '../utils/geometry';
+import { buildStructuralModel } from '../utils/structuralModel';
 import { MidasExport } from './MidasExport';
 import { useT } from '../i18n';
 import { Eye, EyeOff, Layers, Filter, X, Shapes } from 'lucide-react';
@@ -28,12 +29,15 @@ export const LayerSidebar: React.FC = () => {
       alert(t('ls.loadFirst'));
       return;
     }
-    const { members, counts } = extractStructuralModel(st.dxfEntities, st.dxfLayers, st.dxfTransform, { thicknessProfile });
+    const { members, grid, counts } = extractStructuralModel(st.dxfEntities, st.dxfLayers, st.dxfTransform, { thicknessProfile });
     if (members.length === 0) {
       alert(t('ls.noStruct'));
       return;
     }
     st.addLines(members);
+    // 정식 구조모델(월드 mm, 절점-부재 그래프)로 승격해 저장 — 층/해석/MIDAS의 단일 진실 소스
+    const model = buildStructuralModel(members, grid, st.dxfTransform, { name: 'B1F' });
+    st.setModel(model);
     st.setMode('SELECT');
     const qLine = thicknessProfile === 'raw' ? '' : `\n${t('ls.rQuant', thicknessProfile, counts.quantized)}`;
     alert(
@@ -42,7 +46,8 @@ export const LayerSidebar: React.FC = () => {
       `${t('ls.rCol', counts.columns, counts.columnsTagged)}\n` +
       `${t('ls.rBeam', counts.beams)}\n` +
       `${t('ls.rUnpaired', counts.unpairedFaces)}\n` +
-      `${t('ls.rTopo', counts.nodes, counts.extended, counts.snappedCol)}${qLine}`,
+      `${t('ls.rTopo', counts.nodes, counts.extended, counts.snappedCol)}${qLine}\n` +
+      `${t('ls.rModel', model.nodes.length, model.columns.length + model.walls.length + model.beams.length)}`,
     );
   };
 

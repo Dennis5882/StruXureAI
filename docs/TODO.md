@@ -1,7 +1,7 @@
 # StruXureAI — 진행상황 & 앞으로 할 일 (통합 기록)
 
 > 이 문서는 작업 핸드오프용 단일 기록. 대화가 압축돼도 여기서 맥락을 복구한다.
-> 기준 버전: **v0.26.0** · 갱신: 2026-06-24 · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.27.0** · 갱신: 2026-06-24 · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 🌟 북극성: **구조 평면도를 제대로 만들기 + 그 이후를 위한 기반 다지기** (추출 정확도·데이터 기반 우선; 해석/AI는 그 위에)
 > 함께 보기: [ROADMAP.md](./ROADMAP.md)(단계별 로드맵·추천경로) · [STRUCTURAL_MODEL.md](./STRUCTURAL_MODEL.md)(정밀추출 설계) · [MODULES.md](./MODULES.md)(OSS 조사)
 
@@ -23,6 +23,7 @@
 - **정밀 구조모델 추출(P1)**: 벽=**축선+두께(mm)**, 기둥=**bbox+단면(mm)+gridRef**, 그리드 추출 + **버블 라벨 정합**(X1~X10/Y1~Y8), 조적 제외, 중복정리, 그리드스냅, 중심선 연결성 병합.
 - **벽 추출 정확도↑(v0.24~0.25)**: 상호최근접 면쌍 매칭 + 매칭전 면 병합(`mergeCollinearFaces`) + 두께상한 800 + 단일선 벽 회복(중복가드). **CON_WALL 커버리지 73%→96%**.
 - **기둥 위치 정밀화(v0.25.1)**: 스냅/중복 상수 px→mm(scale) 환산. 기둥 오배치(누락 25→0) 수정.
+- **데이터 기반 정식화(v0.27.0)** [`types/structural.ts`+`utils/structuralModel.ts`+store `model`]: 추출 부재→**월드 mm FloorModel**(절점-부재 그래프, 절점 id 참조). 가교 `canvasToWorld/worldToCanvas`. B1F 검증: 절점144·부재117, 참조 무결성 100%, 공유절점38, 그리드 10X+8Y.
 - 품질 점검 하네스: `scratchpad/pw/audit.mjs`·`analyze_walls.mjs`·`audit_cols.mjs`. **앱 `?debug=1`로 `window.__store` 노출**(영구, 프로덕션 무영향).
 - **위상 정리(P3)** [`cleanupTopology`]: 벽 축선 끝점 → 기둥 중심/축선 교차점 연결(extend/trim), 근접 끝점 절점 클러스터링 + `n0/n1` 절점 ID → 절점-부재 그래프. (B1F 검증: 39벽 전부 태깅, 접합 절점 14, 연장 40, 기둥스냅 7)
 - **기둥 회전/단면 정밀화** [`minAreaRect`]: 최소면적 직사각형으로 사선 기둥 단면(width/depth)·회전각(`rotation_deg`) 산출 + 오리엔트 렌더. (단위검증 30°/70°, B1F 50기둥 무회귀)
@@ -56,6 +57,7 @@
 8. **[P4b] 다층 + 위상강화**:
    - ~~라이브 전송 실환경 검증~~ ✅ **완료(v0.22.1)** — 실제 Gen NX에 절점218·기둥50·벽39 생성 확인, CORS 무문제. `/doc/save` 제거(저장 모달이 모델 폐기시키던 문제).
    - ~~다층 스택(수직 복제)~~ ✅ **완료(v0.23.0)** — `stories` 옵션, 평면 N층 복제(기둥 수직 연속, 베이스 z=0). N=3 페이로드 검증. **라이브 N≥2 전송은 재연결 후 확인 필요**(테스트 키 세션 종료됨).
+   - **소비처가 model 사용(다음 추천)**: `midasExport`·`dxfExport`가 px 부재 재유도 대신 store `model`(월드 mm 그래프)을 직접 소비 → 절점 공유가 MIDAS/DXF로 그대로 전달. BuildingModel(다층)도 model 기반으로 조립.
    - 다음 후속: MIDAS **Story Data(STRY)** 연동(층 정보 등록), 층별 다른 평면(다중 DWG import), 보↔기둥/벽 위상연결(절점 공유), 보 춤 라벨 파싱, 하중/지진/풍(Story 자료 참고).
    - 참고자료: `e:/AI Study/Story`(대만 RC 에이전트, MAPI 엔드포인트 카탈로그, 대만 내진/풍하중), [Dennis5882/MIDAS-API](https://github.com/Dennis5882/MIDAS-API).
 

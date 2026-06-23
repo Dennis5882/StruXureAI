@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { DrawingMode, StructureType, StructureLineData, Point2D } from '../types/drawing';
+import { FloorModel } from '../types/structural';
 
 // 📐 DXF 레이어 정보
 export interface DxfLayer {
@@ -43,6 +44,7 @@ interface DrawingState {
   isSidebarOpen: boolean;
   isHelpOpen: boolean;
   lang: 'ko' | 'en' | 'zh';
+  model: FloorModel | null; // 정식 구조모델(월드 mm, 절점-부재 그래프)
 
   // ⏳ 파일 로딩(DWG 변환 등) 상태
   isLoadingFile: boolean;
@@ -67,6 +69,7 @@ interface DrawingState {
   toggleSidebar: () => void;
   toggleHelp: () => void;
   setLang: (lang: 'ko' | 'en' | 'zh') => void;
+  setModel: (model: FloorModel | null) => void;
   setLoadingFile: (loading: boolean, message?: string) => void;
 
   addLine: (line: Omit<StructureLineData, 'id'> | StructureLineData) => void;
@@ -105,6 +108,7 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   isSidebarOpen: false,
   isHelpOpen: false,
   lang: 'ko',
+  model: null,
   isLoadingFile: false,
   loadingMessage: '',
 
@@ -131,6 +135,7 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   toggleHelp: () => set((state) => ({ isHelpOpen: !state.isHelpOpen })),
   setLang: (lang) => set({ lang }),
+  setModel: (model) => set({ model }),
   setLoadingFile: (isLoadingFile, loadingMessage = '') => set({ isLoadingFile, loadingMessage }),
 
   addLine: (line) => set((state) => {
