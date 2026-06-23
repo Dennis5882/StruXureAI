@@ -112,7 +112,8 @@ export const buildMidasRequests = (
     const base = nodes.filter((n) => n.z < -1);
     if (base.length) { const a: any = {}; base.forEach((n, k) => { a[n.id] = { ITEMS: [{ ID: k + 1, CONSTRAINT: '1111110', GROUP_NAME: '' }] }; }); requests.push({ method: 'PUT', command: '/db/cons', body: { Assign: a } }); }
   }
-  requests.push({ method: 'POST', command: '/doc/save', body: {} });
+  // 주: /doc/save 는 자동 호출하지 않음 — 새 문서 저장은 Gen NX에서 "다른 이름으로 저장" 대화상자를
+  //     띄워 API를 블록하므로(Story 에이전트도 빌드시 저장 안 함), 모델 생성까지만 수행한다.
 
   return { requests, summary: { nodes: nodes.length, columns, walls, beams, sections: sects.length, thiks: thiks.length } };
 };
@@ -159,8 +160,11 @@ export const sendMidas = async (
         headers: { 'Content-Type': 'application/json', 'MAPI-Key': mapiKey },
         body: r.body !== undefined ? JSON.stringify(r.body) : undefined,
       });
-      log = { command: `${r.method} ${r.command}`, status: res.status, ok: res.ok };
-      if (!res.ok) log.detail = (await res.text().catch(() => '')).slice(0, 200);
+      const txt = await res.text().catch(() => '');
+      let j: any = null; try { j = txt ? JSON.parse(txt) : null; } catch { /* non-json */ }
+      const ok = res.ok && !(j && j.error); // Story 방식: 200이어도 JSON error면 실패
+      log = { command: `${r.method} ${r.command}`, status: res.status, ok };
+      if (!ok) log.detail = (j && j.error && j.error.message) || txt.slice(0, 200);
     } catch (e: any) {
       log = { command: `${r.method} ${r.command}`, status: 'ERR', ok: false, detail: String(e?.message || e).slice(0, 200) };
     }

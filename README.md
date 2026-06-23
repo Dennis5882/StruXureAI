@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.22.0** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.22.1** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -157,7 +157,7 @@ export interface StructureLineData {
   - 기둥=수직 `BEAM`(단면 depth×width), 벽=수직 압출 4점 `PLATE`(두께 thik→SECT 참조), 보=수평 `BEAM`. 절점 중복 통합, 하단 고정 지지. 재질=더미 `CNS560(RC)`(대만), 단면=측정 기하
   - 사이드바 "MIDAS Gen NX 내보내기" 패널: 층고/등급/Base URL/**MAPI-Key** 입력 → **API 전송**(fetch, Gen NX 실행 필요) / **JSON·Python 다운로드**(CORS·오프라인 대비)
   - 스키마 근거: [Dennis5882/MIDAS-API](https://github.com/Dennis5882/MIDAS-API) + 대만 RC 에이전트(live-verified). 모든 `/db/*`=PUT, `{Assign:{id:{}}}`
-  - ⚠️ 전송은 **MIDAS Gen NX 실행 + MAPI-Key 필요**(서버 경유). 페이로드는 B1F로 검증, 라이브 전송은 사용자 환경 확인
+  - ✅ **실제 Gen NX 라이브 전송 검증 완료**(절점 218·기둥 50·벽 39 생성, CORS 무문제). 전송은 **Gen NX 실행 + MAPI-Key 필요**(서버 경유). 모델 생성까지 자동, 저장은 Gen NX에서 수동
   - **기둥 = 중심점+단면 + 회전 + gridRef** [`minAreaRect`]: **최소면적 직사각형**(회전 캘리퍼스)으로 사선 기둥도 정확한 **단면(width/depth mm)·회전각(rotation_deg)** 산출(축정렬 기둥은 deg=0), **그리드 참조(X3-Y5) 자동 태깅**(라벨 렌더), 그리드 스냅·중복 제거
   - **그리드 추출**: 축선/통심선 레이어(`AXIS/AXN/GRID/CEN/축/통/軸/通`)에서 x·y 격자 산출 + 자동 라벨(X1.. 좌→우, Y1.. 하→상)
   - **조적벽 제외**: `MASONRY/조적/벽돌/BRICK/磚/砌` 비내력 레이어 제외
@@ -186,6 +186,11 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-23 — v0.22.1 (MIDAS 라이브 전송 검증 + 저장 단계 수정)
+- 🎉 **실제 MIDAS Gen NX 라이브 전송 성공**: B1F → 절점 218·기둥 50·벽 39 모델이 Gen NX에 생성됨(GET으로 재확인). **브라우저 직접 전송 CORS 문제 없음**
+- 🐞 자동 시퀀스에서 **`/doc/save` 제거**: 새 문서 저장 대화상자가 API를 블록하고 미저장 문서가 폐기돼 모델이 사라지던 문제 해결(Story 에이전트도 빌드시 저장 안 함). 저장은 Gen NX에서 수동
+- 🛡️ `sendMidas`: 200이어도 응답 JSON에 `error`가 있으면 실패로 처리(Story 방식)
 
 ### 2026-06-23 — v0.22.0 (DXF 저장)
 - ✨ **`dxfExport.ts` + 저장 버튼**: 구조부재를 ASCII DXF(월드 mm, 타입별 레이어)로 내보내기. 회전 기둥=폴리라인 4모서리, 선/원/삼각형 지원, HEADER($INSUNITS=mm)+LAYER 테이블 포함
