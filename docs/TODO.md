@@ -1,7 +1,7 @@
 # StruXureAI — 진행상황 & 앞으로 할 일 (통합 기록)
 
 > 이 문서는 작업 핸드오프용 단일 기록. 대화가 압축돼도 여기서 맥락을 복구한다.
-> 기준 버전: **v0.22.1** · 갱신: 2026-06-23 · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.23.0** · 갱신: 2026-06-23 · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 함께 보기: [STRUCTURAL_MODEL.md](./STRUCTURAL_MODEL.md)(정밀추출 설계) · [MODULES.md](./MODULES.md)(OSS 조사)
 
 ---
@@ -45,10 +45,10 @@
 5. ~~**두께 양자화 프리셋**~~ ✅ **완료(v0.18.0)** — TW/KR 프리셋 주입형, 사이드바 선택.
 6. **단일선 벽 처리**: 짝 없는 벽선 기본두께 부여 vs 보류(플래그) 정책. (미매칭 면선 86개 중 실제 단일선 벽 선별 — B1F는 대부분 이중선이라 노이즈 위험, 보수적으로)
 7. **[P4a] 단일층 MIDAS 내보내기** ✅ **완료(v0.19.0)** — `midasExport.ts`(buildMidasRequests/sendMidas/toPythonScript) + `MidasExport.tsx` 패널. 절점+BEAM/PLATE 요소, CNS560 더미재질.
-8. **[P4b] 다층 + 위상강화 (다음 추천, 최종 목표 마무리)**:
+8. **[P4b] 다층 + 위상강화**:
    - ~~라이브 전송 실환경 검증~~ ✅ **완료(v0.22.1)** — 실제 Gen NX에 절점218·기둥50·벽39 생성 확인, CORS 무문제. `/doc/save` 제거(저장 모달이 모델 폐기시키던 문제).
-   - **다층 스택**: DESIGN.md(e:/AI Study/Story)의 **표준층(기하동일·내력상이) 1:N 매핑** 참고. FloorModel×N → BuildingModel, Z방향 복제, MIDAS **Story Data(STRY)** 연동, 같은 gridRef 기둥 수직 연속.
-   - **보↔기둥/벽 위상연결**(절점 공유), 보 단면 춤 라벨 파싱.
+   - ~~다층 스택(수직 복제)~~ ✅ **완료(v0.23.0)** — `stories` 옵션, 평면 N층 복제(기둥 수직 연속, 베이스 z=0). N=3 페이로드 검증. **라이브 N≥2 전송은 재연결 후 확인 필요**(테스트 키 세션 종료됨).
+   - 다음 후속: MIDAS **Story Data(STRY)** 연동(층 정보 등록), 층별 다른 평면(다중 DWG import), 보↔기둥/벽 위상연결(절점 공유), 보 춤 라벨 파싱, 하중/지진/풍(Story 자료 참고).
    - 참고자료: `e:/AI Study/Story`(대만 RC 에이전트, MAPI 엔드포인트 카탈로그, 대만 내진/풍하중), [Dennis5882/MIDAS-API](https://github.com/Dennis5882/MIDAS-API).
 
 ---

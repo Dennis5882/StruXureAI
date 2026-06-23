@@ -15,6 +15,7 @@ const download = (name: string, content: string, mime: string) => {
 export const MidasExport: React.FC = () => {
   const { t } = useT();
   const [open, setOpen] = useState(false);
+  const [stories, setStories] = useState(1);
   const [storyH, setStoryH] = useState(3200);
   const [grade, setGrade] = useState('C280');
   const [baseUrl, setBaseUrl] = useState(MIDAS_BASE_DEFAULT);
@@ -27,7 +28,7 @@ export const MidasExport: React.FC = () => {
     if (!st.dxfTransform) { alert(t('mx.alExtract')); return null; }
     const cad = st.lines.filter((l) => l.source === 'CAD');
     if (!cad.length) { alert(t('mx.alNoMembers')); return null; }
-    return buildMidasRequests(cad, st.dxfTransform, { storyHeightMm: storyH, concGrade: grade });
+    return buildMidasRequests(cad, st.dxfTransform, { stories, storyHeightMm: storyH, concGrade: grade });
   };
 
   const summarize = (b: MidasBuild) =>
@@ -56,7 +57,11 @@ export const MidasExport: React.FC = () => {
       </button>
       {open && (
         <div className="p-2.5 space-y-2 bg-zinc-900/40">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
+            <label className="text-[11px] text-zinc-400">{t('mx.stories')}
+              <input type="number" min={1} value={stories} onChange={(e) => setStories(Math.max(1, Math.floor(+e.target.value || 1)))}
+                className="w-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-zinc-200 text-[11px]" />
+            </label>
             <label className="text-[11px] text-zinc-400">{t('mx.storyH')}
               <input type="number" value={storyH} onChange={(e) => setStoryH(+e.target.value || 0)}
                 className="w-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-zinc-200 text-[11px]" />

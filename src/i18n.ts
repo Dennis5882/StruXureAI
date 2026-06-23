@@ -70,6 +70,7 @@ const D: Record<string, Entry> = {
 
   // ── MIDAS Export ──
   'mx.title': { ko: 'MIDAS Gen NX 내보내기', en: 'MIDAS Gen NX Export', zh: 'MIDAS Gen NX 匯出' },
+  'mx.stories': { ko: '층수', en: 'Stories', zh: '層數' },
   'mx.storyH': { ko: '층고(mm)', en: 'Story Height (mm)', zh: '樓高 (mm)' },
   'mx.grade': { ko: '콘크리트 등급', en: 'Concrete Grade', zh: '混凝土等級' },
   'mx.baseUrl': { ko: 'Base URL', en: 'Base URL', zh: 'Base URL' },
