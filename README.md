@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.23.0** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.23.1** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -187,6 +187,10 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-23 — v0.23.1 (DXF 호환성: MIDAS 임포트 대응)
+- 🐞 MIDAS Gen NX DXF 임포트 실패("Can't read the file") 대응: **R12(AC1009) LINE 기반으로 재작성** — LWPOLYLINE(R13+) 제거(사각형=4 LINE), **CRLF 줄바꿈**, `$ACADVER` 명시. 엄격한 임포터 호환↑
+- 🔍 검증: B1F → 239 LINE(기둥 50×4 + 벽 39), CRLF/AC1009/EOF 정상, 우리 파서 라운드트립 OK
 
 ### 2026-06-23 — v0.23.0 (P4b: 다층 스택)
 - ✨ **다층 MIDAS 모델**: `buildMidasRequests`에 `stories` 추가 → 추출 평면을 N개 층으로 수직 복제(표준층 1:N). 베이스 z=0, 층 z=H·2H…N·H. 같은 평면점 정렬로 기둥 연속, 패널 "층수" 입력
