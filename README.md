@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.24.0** · 검증일: **2026-06-24** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.25.0** · 검증일: **2026-06-24** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -187,6 +187,10 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-24 — v0.25.0 (단일선 벽 회복: 커버리지 89%→96%)
+- ✨ **단일선 벽 회복**: 짝이 전혀 없는(이중선 아님) 0.5m+ 벽 면선을 중심선으로 채택(기본두께=측정 중앙값, `singleLine` 플래그). **중복 방지 2중 가드** — 이중선 벽의 면(`hasPartner`)·기존 축선에 덮인 면(`coveredByAxis`)은 제외
+- 🔍 검증(Playwright, B1F): CON_WALL 커버리지 **89%→96%**(100% 미만 = 유령벽 없음), 기둥 50 유지, 에러 0
 
 ### 2026-06-24 — v0.24.0 (벽 추출 정확도↑: 커버리지 73%→89%)
 - 🎯 **북극성 = "구조 평면도를 제대로 만들기"** → 품질 점검(audit) 후 벽 추출 정확도 개선

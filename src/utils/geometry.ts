@@ -451,12 +451,55 @@ export const extractStructuralModel = (
   const fMergePerp = Math.max(2, 30 * scale), fMergeGap = 400 * scale;
   const wallFaces = mergeCollinearFaces(faces, fMergePerp, fMergeGap);
   const wp = pairFaces(wallFaces, minPx, maxPx);
-  let unpaired = wp.unpaired;
   const rawAxes: StructureLineData[] = wp.axes.map((ax) => ({
     id: nid('wall'), source: 'CAD', type: 'WALL', shape: 'line',
     coordinates: [ax.p1, ax.p2],
     thickness: 2, properties: { fromCad: true, isAxis: true, thickness_mm: round5(toMm(ax.thickPx)) },
   }));
+
+  // 단일선 벽 회복: 짝 못 찾은 '긴' 면선 중 기존 축선에 안 덮인 것 → 중심선으로 채택(기본두께=측정 중앙값).
+  // 이미 추출된 벽의 반대 면(축선에서 ~두께만큼 떨어진 면)은 '덮임'으로 보고 제외해 중복 방지.
+  const medThickPx = (() => { const v = wp.axes.map((a) => a.thickPx).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : 200 * scale; })();
+  const minSinglePx = 500 * scale; // 0.5m 미만은 노이즈로 간주
+  // 이 면이 [minPx,maxPx] 내 평행·중첩 파트너를 가지는가 = 이중선 벽의 한 면 (단일선으로 오인 금지)
+  const hasPartner = (idx: number): boolean => {
+    const F = wallFaces[idx], fa = getAngle(F.a, F.b), fm = getMidpoint(F.a, F.b);
+    for (let j = 0; j < wallFaces.length; j++) {
+      if (j === idx) continue; const B = wallFaces[j];
+      let ad = Math.abs(fa - getAngle(B.a, B.b)); if (ad > Math.PI / 2) ad = Math.PI - ad;
+      if (ad > 0.08) continue;
+      const d = getDistance(fm, perpFoot(fm, B.a, B.b)); if (d < minPx || d > maxPx) continue;
+      const t1 = projParam(F.a, B.a, B.b), t2 = projParam(F.b, B.a, B.b);
+      if ((Math.min(Math.max(t1, t2), 1) - Math.max(Math.min(t1, t2), 0)) > 0.05) return true;
+    }
+    return false;
+  };
+  const coveredByAxis = (F: Face): boolean => {
+    const fa = getAngle(F.a, F.b), fm = getMidpoint(F.a, F.b);
+    return rawAxes.some((ax) => {
+      const A = ax.coordinates[0], B = ax.coordinates[1];
+      let ad = Math.abs(fa - getAngle(A, B)); if (ad > Math.PI / 2) ad = Math.PI - ad;
+      if (ad > 0.1) return false;
+      if (getDistance(fm, perpFoot(fm, A, B)) > maxPx) return false; // 두께 범위 내 = 그 벽의 면
+      const t1 = projParam(F.a, A, B), t2 = projParam(F.b, A, B);
+      return (Math.min(Math.max(t1, t2), 1) - Math.max(Math.min(t1, t2), 0)) > 0.3;
+    });
+  };
+  let singleLine = 0;
+  for (let i = 0; i < wallFaces.length; i++) {
+    if (wp.used.has(i)) continue;
+    const F = wallFaces[i];
+    if (getDistance(F.a, F.b) < minSinglePx) continue;
+    if (hasPartner(i)) continue;   // 이중선 벽의 면 → 단일선으로 추가 금지(중복 방지)
+    if (coveredByAxis(F)) continue;
+    rawAxes.push({
+      id: nid('wall'), source: 'CAD', type: 'WALL', shape: 'line',
+      coordinates: [F.a, F.b],
+      thickness: 2, properties: { fromCad: true, isAxis: true, singleLine: true, thickness_mm: round5(toMm(medThickPx)) },
+    });
+    singleLine++;
+  }
+  let unpaired = wp.unpaired - singleLine;
   const wallAxes = mergeCollinearLines(rawAxes, Math.max(4, maxPx * 0.5), Math.max(30, maxPx * 8));
 
   // 보: 이중선(면쌍)→축선+폭, 짝 없는 보선→단일 중심선(플래그). 보 폭 범위는 벽보다 넓게.
