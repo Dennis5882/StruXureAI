@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.23.1** · 검증일: **2026-06-23** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.24.0** · 검증일: **2026-06-24** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -187,6 +187,13 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-24 — v0.24.0 (벽 추출 정확도↑: 커버리지 73%→89%)
+- 🎯 **북극성 = "구조 평면도를 제대로 만들기"** → 품질 점검(audit) 후 벽 추출 정확도 개선
+- ✨ **상호 최근접(mutual-nearest) 면쌍 매칭**: 그리디가 이웃 벽과 잘못 짝지어 연쇄 누락하던 문제 해결 → 매칭 가능한 면의 대부분을 올바른 짝으로
+- ✨ **매칭 전 동일선상 면 병합**(`mergeCollinearFaces`): CAD가 교차부/개구부에서 끊어 그린 조각 복원
+- ✨ 벽 두께 상한 600→**800mm**(지하 옹벽 등 두꺼운 벽 포함)
+- 🔍 검증(Playwright, B1F): CON_WALL 길이 커버리지 **73%→89%**, 내부 전단벽 추출 확인, 기둥 50 유지, 에러 0. (조적벽은 의도적 제외)
 
 ### 2026-06-23 — v0.23.1 (DXF 호환성: MIDAS 임포트 대응)
 - 🐞 MIDAS Gen NX DXF 임포트 실패("Can't read the file") 대응: **R12(AC1009) LINE 기반으로 재작성** — LWPOLYLINE(R13+) 제거(사각형=4 LINE), **CRLF 줄바꿈**, `$ACADVER` 명시. 엄격한 임포터 호환↑

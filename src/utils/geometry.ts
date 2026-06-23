@@ -287,35 +287,99 @@ const quantizeTo = (mm: number, table: number[], tolMm: number): number => {
 
 // ── 면쌍 매칭: 근평행 + 두께범위 + 길이중첩인 두 면선 → 중심 축선 + 수직두께(px) ──
 interface Face { a: Point2D; b: Point2D; }
+
+// 동일선상으로 조각난 면선들을 하나의 긴 면선으로 병합 (CAD가 교차부/개구부에서 끊어 그린 것 복원).
+// 매칭 '전'에 적용 → 짧은 조각들이 짝을 못 찾아 버려지던 문제 완화. perpTol < 최소 벽두께라 마주보는 면은 안 합쳐짐.
+const mergeCollinearFaces = (faces: Face[], perpTol: number, gapTol: number, angleTol = 0.06): Face[] => {
+  const n = faces.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < n; i++) {
+    const A = faces[i], angA = getAngle(A.a, A.b);
+    for (let j = i + 1; j < n; j++) {
+      const B = faces[j];
+      let ad = Math.abs(angA - getAngle(B.a, B.b)); if (ad > Math.PI / 2) ad = Math.PI - ad;
+      if (ad > angleTol) continue;
+      if (getDistance(B.a, perpFoot(B.a, A.a, A.b)) > perpTol) continue; // 동일선상(수직거리≈0)
+      if (getDistance(B.b, perpFoot(B.b, A.a, A.b)) > perpTol) continue;
+      const L = getDistance(A.a, A.b) || 1;
+      const t1 = projParam(B.a, A.a, A.b), t2 = projParam(B.b, A.a, A.b);
+      const gap = Math.max(Math.min(t1, t2) - 1, 0 - Math.max(t1, t2)) * L; // 음수=겹침
+      if (gap > gapTol) continue;
+      parent[find(i)] = find(j);
+    }
+  }
+  const groups = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) { const r = find(i); (groups.get(r) ?? groups.set(r, []).get(r)!).push(i); }
+  const out: Face[] = [];
+  for (const idxs of groups.values()) {
+    if (idxs.length === 1) { out.push(faces[idxs[0]]); continue; }
+    let dirI = idxs[0], dl = -1;
+    for (const i of idxs) { const l = getDistance(faces[i].a, faces[i].b); if (l > dl) { dl = l; dirI = i; } }
+    const D = faces[dirI];
+    let lo = Infinity, hi = -Infinity, loP = D.a, hiP = D.b;
+    for (const i of idxs) for (const p of [faces[i].a, faces[i].b]) {
+      const tt = projParam(p, D.a, D.b), foot = perpFoot(p, D.a, D.b);
+      if (tt < lo) { lo = tt; loP = foot; } if (tt > hi) { hi = tt; hiP = foot; }
+    }
+    out.push({ a: loP, b: hiP });
+  }
+  return out;
+};
 const pairFaces = (
   faces: Face[], minPx: number, maxPx: number,
 ): { axes: { p1: Point2D; p2: Point2D; thickPx: number }[]; unpaired: number; used: Set<number> } => {
-  const used = new Set<number>();
+  const n = faces.length;
+  const angle = faces.map((f) => getAngle(f.a, f.b));
+  const mid = faces.map((f) => getMidpoint(f.a, f.b));
+  // i가 j를 면쌍 파트너로 볼 때의 수직거리(=두께). 평행·두께범위·길이중첩 아니면 Infinity.
+  const pairD = (i: number, j: number): number => {
+    let ad = Math.abs(angle[i] - angle[j]); if (ad > Math.PI / 2) ad = Math.PI - ad;
+    if (ad > 0.08) return Infinity;
+    const A = faces[i], B = faces[j];
+    const d = getDistance(mid[i], perpFoot(mid[i], B.a, B.b));
+    if (d < minPx || d > maxPx) return Infinity;
+    const t1 = projParam(A.a, B.a, B.b), t2 = projParam(A.b, B.a, B.b);
+    const ov = Math.min(Math.max(t1, t2), 1) - Math.max(Math.min(t1, t2), 0);
+    return ov <= 0.05 ? Infinity : d;
+  };
+  const used = new Array(n).fill(false);
   const axes: { p1: Point2D; p2: Point2D; thickPx: number }[] = [];
-  let unpaired = 0;
-  for (let i = 0; i < faces.length; i++) {
-    if (used.has(i)) continue;
-    const A = faces[i]; const angA = getAngle(A.a, A.b); const midA = getMidpoint(A.a, A.b);
-    let bj = -1, bd = Infinity;
-    for (let j = 0; j < faces.length; j++) {
-      if (j === i || used.has(j)) continue;
-      const B = faces[j];
-      let ad = Math.abs(angA - getAngle(B.a, B.b)); if (ad > Math.PI / 2) ad = Math.PI - ad;
-      if (ad > 0.08) continue;
-      const d = getDistance(midA, perpFoot(midA, B.a, B.b));
-      if (d < minPx || d > maxPx || d >= bd) continue;
-      const t1 = projParam(A.a, B.a, B.b), t2 = projParam(A.b, B.a, B.b);
-      const ov = Math.min(Math.max(t1, t2), 1) - Math.max(Math.min(t1, t2), 0);
-      if (ov <= 0.05) continue;
-      bd = d; bj = j;
+  const mkAxis = (i: number, j: number, d: number) => {
+    used[i] = used[j] = true;
+    const A = faces[i], B = faces[j];
+    axes.push({ p1: getMidpoint(A.a, perpFoot(A.a, B.a, B.b)), p2: getMidpoint(A.b, perpFoot(A.b, B.a, B.b)), thickPx: d });
+  };
+
+  // 1) 상호 최근접(mutual-nearest) 반복: 서로가 서로의 가장 가까운 파트너일 때만 짝지어
+  //    이웃 벽으로 잘못 짝지어 연쇄적으로 누락되던 문제 해결.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const best = new Array(n).fill(-1), bestD = new Array(n).fill(Infinity);
+    for (let i = 0; i < n; i++) {
+      if (used[i]) continue;
+      for (let j = 0; j < n; j++) {
+        if (j === i || used[j]) continue;
+        const d = pairD(i, j); if (d < bestD[i]) { bestD[i] = d; best[i] = j; }
+      }
     }
-    if (bj >= 0) {
-      used.add(i); used.add(bj);
-      const B = faces[bj];
-      axes.push({ p1: getMidpoint(A.a, perpFoot(A.a, B.a, B.b)), p2: getMidpoint(A.b, perpFoot(A.b, B.a, B.b)), thickPx: bd });
-    } else unpaired++;
+    for (let i = 0; i < n; i++) {
+      if (used[i] || best[i] < 0) continue;
+      const j = best[i];
+      if (!used[j] && best[j] === i) { mkAxis(i, j, bestD[i]); changed = true; }
+    }
   }
-  return { axes, unpaired, used };
+  // 2) 잔여 그리디: 아직 안 짝지은 면을 가장 가까운 파트너와 (커버리지 보강)
+  for (let i = 0; i < n; i++) {
+    if (used[i]) continue;
+    let bj = -1, bd = Infinity;
+    for (let j = 0; j < n; j++) { if (j === i || used[j]) continue; const d = pairD(i, j); if (d < bd) { bd = d; bj = j; } }
+    if (bj >= 0) mkAxis(i, bj, bd);
+  }
+  const usedSet = new Set<number>(); let unpaired = 0;
+  for (let i = 0; i < n; i++) { if (used[i]) usedSet.add(i); else unpaired++; }
+  return { axes, unpaired, used: usedSet };
 };
 
 // ── P1: 정밀 구조모델 추출 (벽=축선+두께, 기둥=gridRef+단면) ──
@@ -342,7 +406,7 @@ export const extractStructuralModel = (
   const toMm = (px: number) => px / scale;
   const round5 = (mm: number) => Math.round(mm / 5) * 5;
   const minPx = (opts?.wallMinMm ?? 60) * scale;
-  const maxPx = (opts?.wallMaxMm ?? 600) * scale;
+  const maxPx = (opts?.wallMaxMm ?? 800) * scale; // 지하 옹벽 등 두꺼운 벽 포함
   let idc = 0; const nid = (p: string) => `${p}_${Date.now().toString(36)}_${idc++}`;
 
   // 그리드 + 라벨 (버블 TEXT 정합, 없으면 자동번호)
@@ -383,8 +447,10 @@ export const extractStructuralModel = (
     }
   }
 
-  // 벽 면쌍 → 축선 + 두께(mm)
-  const wp = pairFaces(faces, minPx, maxPx);
+  // 벽 면쌍 → 축선 + 두께(mm). 매칭 전 동일선상 조각 병합(커버리지↑). perpTol는 최소벽두께보다 작게.
+  const fMergePerp = Math.max(2, 30 * scale), fMergeGap = 400 * scale;
+  const wallFaces = mergeCollinearFaces(faces, fMergePerp, fMergeGap);
+  const wp = pairFaces(wallFaces, minPx, maxPx);
   let unpaired = wp.unpaired;
   const rawAxes: StructureLineData[] = wp.axes.map((ax) => ({
     id: nid('wall'), source: 'CAD', type: 'WALL', shape: 'line',
@@ -396,15 +462,16 @@ export const extractStructuralModel = (
   // 보: 이중선(면쌍)→축선+폭, 짝 없는 보선→단일 중심선(플래그). 보 폭 범위는 벽보다 넓게.
   const beamMinPx = (opts?.beamMinMm ?? 150) * scale;
   const beamMaxPx = (opts?.beamMaxMm ?? 1200) * scale;
-  const bp = pairFaces(beamFaces, beamMinPx, beamMaxPx);
+  const beamFacesM = mergeCollinearFaces(beamFaces, fMergePerp, fMergeGap);
+  const bp = pairFaces(beamFacesM, beamMinPx, beamMaxPx);
   const rawBeams: StructureLineData[] = bp.axes.map((ax) => ({
     id: nid('beam'), source: 'CAD', type: 'BEAM', shape: 'line',
     coordinates: [ax.p1, ax.p2],
     thickness: 2, properties: { fromCad: true, isAxis: true, width_mm: round5(toMm(ax.thickPx)) },
   }));
-  for (let i = 0; i < beamFaces.length; i++) {
+  for (let i = 0; i < beamFacesM.length; i++) {
     if (bp.used.has(i)) continue; // 단일선 보 = 중심선 직접 사용
-    const F = beamFaces[i];
+    const F = beamFacesM[i];
     rawBeams.push({
       id: nid('beam'), source: 'CAD', type: 'BEAM', shape: 'line',
       coordinates: [F.a, F.b],
