@@ -99,6 +99,7 @@ const classifyLayer = (name: string): StructureType | null => {
   const u = (name || '').toUpperCase();
   if (/MASONRY|조적|벽돌|BRICK|磚|砌/.test(u)) return null;
   if (/COL|기둥|柱/.test(u)) return 'COLUMN';
+  if (/BEAM|GIRDER|보|梁|桁|大梁|小梁/.test(u)) return 'BEAM'; // 벽보다 먼저(RC_BEAM 등이 WALL로 오분류 방지)
   if (/WALL|옹벽|벽|墙|牆|RC|SHEAR/.test(u)) return 'WALL';
   return null;
 };
@@ -271,13 +272,46 @@ export const extractMembersFromDxf = (
   return { members, counts: { wall, column: kept.length }, truncated };
 };
 
+// ── 면쌍 매칭: 근평행 + 두께범위 + 길이중첩인 두 면선 → 중심 축선 + 수직두께(px) ──
+interface Face { a: Point2D; b: Point2D; }
+const pairFaces = (
+  faces: Face[], minPx: number, maxPx: number,
+): { axes: { p1: Point2D; p2: Point2D; thickPx: number }[]; unpaired: number; used: Set<number> } => {
+  const used = new Set<number>();
+  const axes: { p1: Point2D; p2: Point2D; thickPx: number }[] = [];
+  let unpaired = 0;
+  for (let i = 0; i < faces.length; i++) {
+    if (used.has(i)) continue;
+    const A = faces[i]; const angA = getAngle(A.a, A.b); const midA = getMidpoint(A.a, A.b);
+    let bj = -1, bd = Infinity;
+    for (let j = 0; j < faces.length; j++) {
+      if (j === i || used.has(j)) continue;
+      const B = faces[j];
+      let ad = Math.abs(angA - getAngle(B.a, B.b)); if (ad > Math.PI / 2) ad = Math.PI - ad;
+      if (ad > 0.08) continue;
+      const d = getDistance(midA, perpFoot(midA, B.a, B.b));
+      if (d < minPx || d > maxPx || d >= bd) continue;
+      const t1 = projParam(A.a, B.a, B.b), t2 = projParam(A.b, B.a, B.b);
+      const ov = Math.min(Math.max(t1, t2), 1) - Math.max(Math.min(t1, t2), 0);
+      if (ov <= 0.05) continue;
+      bd = d; bj = j;
+    }
+    if (bj >= 0) {
+      used.add(i); used.add(bj);
+      const B = faces[bj];
+      axes.push({ p1: getMidpoint(A.a, perpFoot(A.a, B.a, B.b)), p2: getMidpoint(A.b, perpFoot(A.b, B.a, B.b)), thickPx: bd });
+    } else unpaired++;
+  }
+  return { axes, unpaired, used };
+};
+
 // ── P1: 정밀 구조모델 추출 (벽=축선+두께, 기둥=gridRef+단면) ──
 export interface StructModelResult {
   members: StructureLineData[];
   grid: GridLabeled;
   counts: {
     wallAxes: number; columns: number; columnsTagged: number; unpairedFaces: number;
-    nodes: number; extended: number; snappedCol: number; wallsLabeled: number;
+    nodes: number; extended: number; snappedCol: number; wallsLabeled: number; beams: number;
   };
 }
 
@@ -285,7 +319,7 @@ export const extractStructuralModel = (
   entities: any[],
   layers: { name: string; visible: boolean }[],
   t: DxfTransform,
-  opts?: { wallMinMm?: number; wallMaxMm?: number; topology?: boolean; extendMm?: number; nodeMm?: number },
+  opts?: { wallMinMm?: number; wallMaxMm?: number; beamMinMm?: number; beamMaxMm?: number; topology?: boolean; extendMm?: number; nodeMm?: number },
 ): StructModelResult => {
   const visible = new Map(layers.map((l) => [l.name, l.visible]));
   const tx = (x: number) => t.pad + (x - t.minX) * t.scale;
@@ -308,8 +342,9 @@ export const extractStructuralModel = (
     return xl && yl ? `${xl}-${yl}` : (xl || yl);
   };
 
-  // 엔티티 수집: 벽 면선(px), 기둥 최소면적사각형(px, 회전 포함)
-  const faces: { a: Point2D; b: Point2D }[] = [];
+  // 엔티티 수집: 벽 면선(px), 보 면선(px), 기둥 최소면적사각형(px, 회전 포함)
+  const faces: Face[] = [];
+  const beamFaces: Face[] = [];
   type Col = { cx: number; cy: number; w: number; h: number; deg: number; layer: string };
   const cols: Col[] = [];
   for (const e of entities) {
@@ -325,7 +360,8 @@ export const extractStructuralModel = (
       continue;
     }
     const et = (e.type || '').toUpperCase();
-    const add = (p1: Point2D, p2: Point2D) => faces.push({ a: { x: tx(p1.x), y: ty(p1.y) }, b: { x: tx(p2.x), y: ty(p2.y) } });
+    const target = cls === 'BEAM' ? beamFaces : faces;
+    const add = (p1: Point2D, p2: Point2D) => target.push({ a: { x: tx(p1.x), y: ty(p1.y) }, b: { x: tx(p2.x), y: ty(p2.y) } });
     if (et === 'LINE' && Array.isArray(e.vertices) && e.vertices.length >= 2) add(e.vertices[0], e.vertices[1]);
     else if ((et === 'LWPOLYLINE' || et === 'POLYLINE') && Array.isArray(e.vertices) && e.vertices.length >= 2) {
       for (let i = 0; i < e.vertices.length - 1; i++) add(e.vertices[i], e.vertices[i + 1]);
@@ -334,36 +370,34 @@ export const extractStructuralModel = (
   }
 
   // 벽 면쌍 → 축선 + 두께(mm)
-  const rawAxes: StructureLineData[] = [];
-  const used = new Set<number>();
-  let unpaired = 0;
-  for (let i = 0; i < faces.length; i++) {
-    if (used.has(i)) continue;
-    const A = faces[i]; const angA = getAngle(A.a, A.b); const midA = getMidpoint(A.a, A.b);
-    let bj = -1, bd = Infinity;
-    for (let j = 0; j < faces.length; j++) {
-      if (j === i || used.has(j)) continue;
-      const B = faces[j];
-      let ad = Math.abs(angA - getAngle(B.a, B.b)); if (ad > Math.PI / 2) ad = Math.PI - ad;
-      if (ad > 0.08) continue;
-      const d = getDistance(midA, perpFoot(midA, B.a, B.b));
-      if (d < minPx || d > maxPx || d >= bd) continue;
-      const t1 = projParam(A.a, B.a, B.b), t2 = projParam(A.b, B.a, B.b);
-      const ov = Math.min(Math.max(t1, t2), 1) - Math.max(Math.min(t1, t2), 0);
-      if (ov <= 0.05) continue;
-      bd = d; bj = j;
-    }
-    if (bj >= 0) {
-      used.add(i); used.add(bj);
-      const B = faces[bj];
-      rawAxes.push({
-        id: nid('wall'), source: 'CAD', type: 'WALL', shape: 'line',
-        coordinates: [getMidpoint(A.a, perpFoot(A.a, B.a, B.b)), getMidpoint(A.b, perpFoot(A.b, B.a, B.b))],
-        thickness: 2, properties: { fromCad: true, isAxis: true, thickness_mm: round5(toMm(bd)) },
-      });
-    } else unpaired++;
-  }
+  const wp = pairFaces(faces, minPx, maxPx);
+  let unpaired = wp.unpaired;
+  const rawAxes: StructureLineData[] = wp.axes.map((ax) => ({
+    id: nid('wall'), source: 'CAD', type: 'WALL', shape: 'line',
+    coordinates: [ax.p1, ax.p2],
+    thickness: 2, properties: { fromCad: true, isAxis: true, thickness_mm: round5(toMm(ax.thickPx)) },
+  }));
   const wallAxes = mergeCollinearLines(rawAxes, Math.max(4, maxPx * 0.5), Math.max(30, maxPx * 8));
+
+  // 보: 이중선(면쌍)→축선+폭, 짝 없는 보선→단일 중심선(플래그). 보 폭 범위는 벽보다 넓게.
+  const beamMinPx = (opts?.beamMinMm ?? 150) * scale;
+  const beamMaxPx = (opts?.beamMaxMm ?? 1200) * scale;
+  const bp = pairFaces(beamFaces, beamMinPx, beamMaxPx);
+  const rawBeams: StructureLineData[] = bp.axes.map((ax) => ({
+    id: nid('beam'), source: 'CAD', type: 'BEAM', shape: 'line',
+    coordinates: [ax.p1, ax.p2],
+    thickness: 2, properties: { fromCad: true, isAxis: true, width_mm: round5(toMm(ax.thickPx)) },
+  }));
+  for (let i = 0; i < beamFaces.length; i++) {
+    if (bp.used.has(i)) continue; // 단일선 보 = 중심선 직접 사용
+    const F = beamFaces[i];
+    rawBeams.push({
+      id: nid('beam'), source: 'CAD', type: 'BEAM', shape: 'line',
+      coordinates: [F.a, F.b],
+      thickness: 2, properties: { fromCad: true, isAxis: true, singleLine: true },
+    });
+  }
+  const beams = rawBeams.length ? mergeCollinearLines(rawBeams, Math.max(4, beamMaxPx * 0.5), Math.max(30, beamMaxPx * 8)) : [];
 
   // 기둥: 그리드 스냅 + 중복 제거 + gridRef/단면(mm)
   const SNAP = 20, DEDUP = 10;
@@ -399,7 +433,7 @@ export const extractStructuralModel = (
     if (gl) { w.properties = { ...(w.properties || {}), gridLine: gl }; wallsLabeled++; }
   }
 
-  const members: StructureLineData[] = [...wallAxes];
+  const members: StructureLineData[] = [...wallAxes, ...beams];
   let tagged = 0;
   for (const c of kept) {
     const ref = gridRefOf(c.cx, c.cy); if (ref) tagged++;
@@ -414,7 +448,7 @@ export const extractStructuralModel = (
     members, grid,
     counts: {
       wallAxes: wallAxes.length, columns: kept.length, columnsTagged: tagged, unpairedFaces: unpaired,
-      nodes: topo.nodes, extended: topo.extended, snappedCol: topo.snappedCol, wallsLabeled,
+      nodes: topo.nodes, extended: topo.extended, snappedCol: topo.snappedCol, wallsLabeled, beams: beams.length,
     },
   };
 };
