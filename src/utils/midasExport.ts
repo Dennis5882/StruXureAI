@@ -1,8 +1,7 @@
-import { StructureLineData } from '../types/drawing';
-import { DxfTransform } from '../store/useDrawingStore';
+import { FloorModel } from '../types/structural';
 
 // ── MIDAS Gen NX Open API 내보내기 ──────────────────────────
-// 캔버스 px 구조부재 → 월드(mm) 단일층 구조모델 → MIDAS API 요청 시퀀스.
+// 정식 구조모델(FloorModel, 월드 mm 절점-부재 그래프) → MIDAS API 요청 시퀀스.
 // 스키마 근거: Dennis5882/MIDAS-API + e:/AI Study/Story 대만 RC 에이전트(v2.3.0, live-verified).
 //  · 모든 /db/* 는 PUT, /doc/* 는 POST · 바디 {Assign:{id:{}}}
 //  · 재료=CNS560(RC) 대만표준 · 단면 vSIZE[H,B,0,0,0,0,0] · 보/기둥 STYPE0 · 벽=PLATE(두께는 thik→SECT참조) STYPE1
@@ -17,34 +16,34 @@ export interface MidasBuild {
 export const MIDAS_BASE_DEFAULT = 'https://moa-engineers.midasit.com:443/gen';
 
 /**
- * 추출된 구조부재(px)를 MIDAS API 요청 시퀀스로 변환 (단일층 PoC).
- * - 기둥: (x,y,0)→(x,y,-H) 수직 BEAM 요소 (단면 = depth×width)
- * - 벽: 평면 축선을 -H까지 수직 압출한 4점 PLATE (두께 thik→SECT 참조)
- * - 보: Z=0 평면의 수평 BEAM 요소 (단면 = 폭×2폭 더미 춤)
- * - 하단(z=-H) 절점 고정 지지('1111110'), 재질 1개(CNS560 더미).
+ * 정식 구조모델(FloorModel) → MIDAS API 요청 시퀀스. 모델의 절점 그래프를 그대로 사용하므로
+ * 접합부 절점 공유가 MIDAS 절점 공유로 직결된다(단일 진실 소스).
+ * - 기둥: (node,k-1)→(node,k) 수직 BEAM 요소 (단면 = depth×width)
+ * - 벽: 축선(i,j)을 층 사이 4점 PLATE로 압출 (두께 thik→SECT 참조)
+ * - 보: 각 층 바닥의 수평 BEAM 요소
+ * - 베이스(z=0) 절점 고정 지지('1111110'), 재질 1개(CNS560 더미).
  */
 export const buildMidasRequests = (
-  members: StructureLineData[],
-  t: DxfTransform,
+  model: FloorModel,
   opts?: { storyHeightMm?: number; stories?: number; unitDist?: string; unitForce?: string; concGrade?: string },
 ): MidasBuild => {
   const H = opts?.storyHeightMm ?? 3200;
   const N = Math.max(1, Math.floor(opts?.stories ?? 1)); // 층수 (표준층 1:N 수직 복제)
-  const scale = t.scale || 1;
-  const wx = (px: number) => t.minX + (px - t.pad) / scale; // px → 월드 X(mm)
-  const wy = (py: number) => t.maxY - (py - t.pad) / scale; // px → 월드 Y(mm, DXF Y up)
   const f4 = (v: number) => +v.toFixed(4);
 
-  // 절점 레지스트리 (1mm 반올림 키로 중복 통합)
+  // MIDAS 절점: (평면 절점 id, 레벨 k) → 고유 번호. 모델의 절점 그래프를 층별로 복제.
+  const planById = new Map(model.nodes.map((n) => [n.id, n]));
   const nodes: { id: number; x: number; y: number; z: number }[] = [];
   const nmap = new Map<string, number>();
-  const nodeId = (x: number, y: number, z: number): number => {
-    const key = `${Math.round(x)},${Math.round(y)},${Math.round(z)}`;
+  const nodeAt = (planId: string, k: number): number => {
+    const key = `${planId}@${k}`;
     const hit = nmap.get(key); if (hit) return hit;
-    const id = nodes.length + 1; nmap.set(key, id); nodes.push({ id, x: f4(x), y: f4(y), z: f4(z) }); return id;
+    const p = planById.get(planId)!;
+    const id = nodes.length + 1; nmap.set(key, id);
+    nodes.push({ id, x: f4(p.x), y: f4(p.y), z: f4(k * H) }); return id;
   };
 
-  // 단면(기둥·보) 레지스트리 — id 공간은 thik과 분리(요소 타입으로 구분됨)
+  // 단면(기둥·보) / 두께(벽) 레지스트리
   const sects: { id: number; name: string; h: number; w: number }[] = [];
   const smap = new Map<string, number>();
   const sectId = (h: number, w: number, prefix: string): number => {
@@ -52,7 +51,6 @@ export const buildMidasRequests = (
     const hit = smap.get(name); if (hit) return hit;
     const id = sects.length + 1; smap.set(name, id); sects.push({ id, name, h, w }); return id;
   };
-  // 벽 두께(thik) 레지스트리
   const thiks: { id: number; name: string; t: number }[] = [];
   const tmap = new Map<number, number>();
   const thikId = (th: number): number => {
@@ -62,36 +60,23 @@ export const buildMidasRequests = (
 
   type Elem = { id: number; TYPE: string; MATL: number; SECT: number; NODE: number[]; ANGLE: number; STYPE: number };
   const elems: Elem[] = [];
-  let columns = 0, walls = 0, beams = 0;
-  // 레벨 k(0=베이스, 1..N=각 층 바닥)의 절점. 같은 평면점은 층마다 수직 정렬되어 기둥이 연속됨.
-  const nodeAt = (X: number, Y: number, k: number) => nodeId(X, Y, k * H);
 
-  for (const m of members) {
-    if (m.source !== 'CAD' || m.coordinates.length < 2) continue;
-    const a = m.coordinates[0], b = m.coordinates[1];
-    if (m.type === 'COLUMN' && m.shape === 'rect') {
-      const X = wx((a.x + b.x) / 2), Y = wy((a.y + b.y) / 2);
-      const w = Math.round(m.properties?.width_mm ?? Math.abs(wx(b.x) - wx(a.x)));
-      const d = Math.round(m.properties?.depth_mm ?? Math.abs(wy(a.y) - wy(b.y)));
-      const sid = sectId(d, w, 'C'); const ang = Math.round(m.properties?.rotation_deg ?? 0);
-      for (let k = 1; k <= N; k++) // 각 층: 아래 레벨(k-1)→위 레벨(k) 수직 기둥
-        elems.push({ id: elems.length + 1, TYPE: 'BEAM', MATL: 1, SECT: sid, NODE: [nodeAt(X, Y, k - 1), nodeAt(X, Y, k)], ANGLE: ang, STYPE: 0 });
-      columns++;
-    } else if (m.type === 'WALL' && m.shape === 'line') {
-      const ax = wx(a.x), ay = wy(a.y), bx = wx(b.x), by = wy(b.y);
-      const tid = thikId(m.properties?.thickness_mm ?? 200);
-      for (let k = 1; k <= N; k++) // 각 층: 축선을 아래→위로 압출한 수직 벽 패널
-        elems.push({ id: elems.length + 1, TYPE: 'PLATE', MATL: 1, SECT: tid, NODE: [nodeAt(ax, ay, k), nodeAt(bx, by, k), nodeAt(bx, by, k - 1), nodeAt(ax, ay, k - 1)], ANGLE: 0, STYPE: 1 });
-      walls++;
-    } else if (m.type === 'BEAM' && m.shape === 'line') {
-      const ax = wx(a.x), ay = wy(a.y), bx = wx(b.x), by = wy(b.y);
-      const w = Math.round(m.properties?.width_mm ?? 300);
-      const sid = sectId(w * 2, w, 'B'); // 춤(depth) 미상 → 폭의 2배 더미
-      for (let k = 1; k <= N; k++) // 각 층 바닥의 수평 보
-        elems.push({ id: elems.length + 1, TYPE: 'BEAM', MATL: 1, SECT: sid, NODE: [nodeAt(ax, ay, k), nodeAt(bx, by, k)], ANGLE: 0, STYPE: 0 });
-      beams++;
-    }
+  for (const c of model.columns) {
+    const sid = sectId(c.depth, c.width, 'C');
+    for (let k = 1; k <= N; k++) // 각 층: 아래 레벨(k-1)→위 레벨(k) 수직 기둥
+      elems.push({ id: elems.length + 1, TYPE: 'BEAM', MATL: 1, SECT: sid, NODE: [nodeAt(c.node, k - 1), nodeAt(c.node, k)], ANGLE: Math.round(c.rotation || 0), STYPE: 0 });
   }
+  for (const w of model.walls) {
+    const tid = thikId(w.thickness);
+    for (let k = 1; k <= N; k++) // 각 층: 축선(i,j)을 아래→위로 압출한 수직 벽 패널
+      elems.push({ id: elems.length + 1, TYPE: 'PLATE', MATL: 1, SECT: tid, NODE: [nodeAt(w.i, k), nodeAt(w.j, k), nodeAt(w.j, k - 1), nodeAt(w.i, k - 1)], ANGLE: 0, STYPE: 1 });
+  }
+  for (const bm of model.beams) {
+    const sid = sectId(bm.width * 2, bm.width, 'B'); // 춤(depth) 미상 → 폭의 2배 더미
+    for (let k = 1; k <= N; k++) // 각 층 바닥의 수평 보
+      elems.push({ id: elems.length + 1, TYPE: 'BEAM', MATL: 1, SECT: sid, NODE: [nodeAt(bm.i, k), nodeAt(bm.j, k)], ANGLE: 0, STYPE: 0 });
+  }
+  const columns = model.columns.length, walls = model.walls.length, beams = model.beams.length;
 
   // ── 요청 시퀀스 (모든 /db/* 는 PUT, /doc/* 는 POST) ──
   const grade = opts?.concGrade ?? 'C280'; // 대만 RC 기본

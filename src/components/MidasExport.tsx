@@ -25,10 +25,9 @@ export const MidasExport: React.FC = () => {
 
   const build = (): MidasBuild | null => {
     const st = useDrawingStore.getState();
-    if (!st.dxfTransform) { alert(t('mx.alExtract')); return null; }
-    const cad = st.lines.filter((l) => l.source === 'CAD');
-    if (!cad.length) { alert(t('mx.alNoMembers')); return null; }
-    return buildMidasRequests(cad, st.dxfTransform, { stories, storyHeightMm: storyH, concGrade: grade });
+    const model = st.model;
+    if (!model || !model.nodes.length) { alert(t('mx.alNoMembers')); return null; }
+    return buildMidasRequests(model, { stories, storyHeightMm: storyH, concGrade: grade });
   };
 
   const summarize = (b: MidasBuild) =>

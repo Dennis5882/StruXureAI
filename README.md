@@ -132,7 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
-> 기준 버전: **v0.27.0** · 검증일: **2026-06-24** · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.27.1** · 검증일: **2026-06-24** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
 ### ✅ 구현 완료 (검증됨)
@@ -187,6 +187,10 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+### 2026-06-24 — v0.27.1 (MIDAS 내보내기가 구조모델 직접 소비)
+- ♻️ **`buildMidasRequests`가 px 부재 재유도 대신 `FloorModel`(절점 그래프)을 소비** → 모델의 접합부 절점 공유가 MIDAS 절점 공유로 직결(단일 진실 소스 관통)
+- 🔍 검증(Playwright, model→JSON): 절점 282·벽 PLATE 69·기둥 BEAM 50, **공유 절점 82**, 모든 요소→절점 참조 유효, z레벨 0/3200, 베이스 고정 141, 에러 0
 
 ### 2026-06-24 — v0.27.0 (데이터 기반 정식화: 월드 mm 구조모델·절점-부재 그래프)
 - ✨ **`src/types/structural.ts`** 스키마: Node/Column/Wall/Beam/GridAxis/FloorModel/BuildingModel (전부 월드 mm, 부재는 **절점 id 참조**)
