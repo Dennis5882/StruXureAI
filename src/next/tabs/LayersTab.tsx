@@ -1,9 +1,9 @@
 import React from 'react';
-import { Eye, EyeOff, Filter, Shapes } from 'lucide-react';
+import { Eye, EyeOff, Filter, Shapes, HelpCircle, Check, X } from 'lucide-react';
 import { useDrawingStore } from '../../store/useDrawingStore';
 import { ThicknessProfile, classifyLayer } from '../../utils/geometry';
 import { useNext } from '../strings';
-import type { LayerTypeOverrides } from '../AppNext';
+import type { LayerTypeOverrides, LineLayerIncludes } from '../AppNext';
 import type { StructureType } from '../../types/drawing';
 
 type OverrideValue = StructureType | 'EXCLUDE' | 'AUTO';
@@ -14,6 +14,8 @@ interface Props {
   setProfile: (p: ThicknessProfile) => void;
   layerTypeOverrides: LayerTypeOverrides;
   setLayerOverride: (name: string, type: OverrideValue) => void;
+  lineLayerIncludes: LineLayerIncludes;
+  setLineInclude: (name: string, include: boolean) => void;
 }
 
 const TYPE_OPTIONS: { value: OverrideValue; label: string }[] = [
@@ -41,12 +43,22 @@ const TypeBadge: React.FC<{ type: StructureType | null; auto?: boolean }> = ({ t
   );
 };
 
-export const LayersTab: React.FC<Props> = ({ onExtract, profile, setProfile, layerTypeOverrides, setLayerOverride }) => {
+export const LayersTab: React.FC<Props> = ({ onExtract, profile, setProfile, layerTypeOverrides, setLayerOverride, lineLayerIncludes, setLineInclude }) => {
   const { n } = useNext();
   const dxfLayers = useDrawingStore((s) => s.dxfLayers);
   const dxfEntities = useDrawingStore((s) => s.dxfEntities);
   const toggleDxfLayer = useDrawingStore((s) => s.toggleDxfLayer);
   const setDxfLayers = useDrawingStore((s) => s.setDxfLayers);
+
+  // 레이어별 LINE 엔티티 수 집계 (기둥/벽/보로 지정된 레이어 한정)
+  const lineCountByLayer = React.useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const e of dxfEntities) {
+      if ((e.type || '').toUpperCase() !== 'LINE') continue;
+      map[e.layer] = (map[e.layer] || 0) + 1;
+    }
+    return map;
+  }, [dxfEntities]);
 
   const autoFilter = () => {
     const kw = ['S-', 'COL', 'WALL', 'CONC', '기둥', '옹벽'];
@@ -88,35 +100,72 @@ export const LayersTab: React.FC<Props> = ({ onExtract, profile, setProfile, lay
             const effectiveType = override === 'EXCLUDE' ? null : (override as StructureType | undefined) ?? autoType;
             const isOverridden = !!override;
 
+            // LINE 배너 조건: 구조 타입이 지정된 레이어에 LINE이 있고, 아직 답변 없음
+            const lineCount = lineCountByLayer[layer.name] ?? 0;
+            const isStructural = effectiveType === 'COLUMN' || effectiveType === 'WALL' || effectiveType === 'BEAM';
+            const lineAnswered = layer.name in lineLayerIncludes;
+            const showLineBanner = isStructural && lineCount > 0 && !lineAnswered && layer.visible;
+
+            const typeLabel = { COLUMN: '기둥', WALL: '벽', BEAM: '보' }[effectiveType as string] ?? '';
+
             return (
-              <div key={layer.name} className={`flex items-center gap-1 px-1.5 py-1 hover:bg-zinc-800 rounded group ${!layer.visible ? 'opacity-50' : ''}`}>
-                {/* 눈 토글 */}
-                <button onClick={() => toggleDxfLayer(layer.name)} className="shrink-0 text-zinc-500 group-hover:text-zinc-300">
-                  {layer.visible ? <Eye size={13} className="text-emerald-400" /> : <EyeOff size={13} />}
-                </button>
+              <React.Fragment key={layer.name}>
+                <div className={`flex items-center gap-1 px-1.5 py-1 hover:bg-zinc-800 rounded group ${!layer.visible ? 'opacity-50' : ''}`}>
+                  {/* 눈 토글 */}
+                  <button onClick={() => toggleDxfLayer(layer.name)} className="shrink-0 text-zinc-500 group-hover:text-zinc-300">
+                    {layer.visible ? <Eye size={13} className="text-emerald-400" /> : <EyeOff size={13} />}
+                  </button>
 
-                {/* 레이어명 */}
-                <span className="flex-1 text-[11px] truncate text-zinc-300 min-w-0" title={layer.name}>{layer.name}</span>
+                  {/* 레이어명 */}
+                  <span className="flex-1 text-[11px] truncate text-zinc-300 min-w-0" title={layer.name}>{layer.name}</span>
 
-                {/* 자동 감지 배지 (override 없을 때만) */}
-                {!isOverridden && <TypeBadge type={autoType} auto />}
+                  {/* 자동 감지 배지 (override 없을 때만) */}
+                  {!isOverridden && <TypeBadge type={autoType} auto />}
 
-                {/* 타입 지정 드롭다운 */}
-                <select
-                  value={override ?? 'AUTO'}
-                  onChange={(e) => setLayerOverride(layer.name, e.target.value as OverrideValue)}
-                  className={`shrink-0 text-[10px] rounded px-1 py-0.5 border focus:outline-none ${
-                    isOverridden
-                      ? 'bg-indigo-600/20 text-indigo-200 border-indigo-500/40'
-                      : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:border-zinc-500'
-                  }`}
-                  title="부재 타입 지정"
-                >
-                  {TYPE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
+                  {/* 타입 지정 드롭다운 */}
+                  <select
+                    value={override ?? 'AUTO'}
+                    onChange={(e) => setLayerOverride(layer.name, e.target.value as OverrideValue)}
+                    className={`shrink-0 text-[10px] rounded px-1 py-0.5 border focus:outline-none ${
+                      isOverridden
+                        ? 'bg-indigo-600/20 text-indigo-200 border-indigo-500/40'
+                        : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:border-zinc-500'
+                    }`}
+                    title="부재 타입 지정"
+                  >
+                    {TYPE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* LINE 배너 — 사용자 확인 요청 */}
+                {showLineBanner && (
+                  <div className="mx-1 mb-1 p-2 rounded border border-amber-500/30 bg-amber-500/10 text-[10px]">
+                    <div className="flex items-start gap-1.5 mb-2">
+                      <HelpCircle size={12} className="text-amber-400 mt-0.5 shrink-0" />
+                      <span className="text-amber-200 leading-relaxed">
+                        단선(LINE) <span className="font-bold text-amber-300">{lineCount}개</span>가 있습니다.<br />
+                        이것도 <span className="font-bold">{typeLabel}</span>인가요?
+                      </span>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => setLineInclude(layer.name, true)}
+                        className="flex-1 flex items-center justify-center gap-1 py-1 rounded bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/50"
+                      >
+                        <Check size={11} /><span>예, {typeLabel}입니다</span>
+                      </button>
+                      <button
+                        onClick={() => setLineInclude(layer.name, false)}
+                        className="flex items-center justify-center gap-1 px-2 py-1 rounded bg-zinc-800 text-zinc-500 border border-zinc-700 hover:text-zinc-300"
+                      >
+                        <X size={11} /><span>아니요</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </React.Fragment>
             );
           })
         )}

@@ -397,10 +397,11 @@ export const extractStructuralModel = (
   entities: any[],
   layers: { name: string; visible: boolean }[],
   t: DxfTransform,
-  opts?: { wallMinMm?: number; wallMaxMm?: number; beamMinMm?: number; beamMaxMm?: number; topology?: boolean; extendMm?: number; nodeMm?: number; thicknessProfile?: ThicknessProfile; layerTypeOverrides?: Record<string, StructureType | 'EXCLUDE'> },
+  opts?: { wallMinMm?: number; wallMaxMm?: number; beamMinMm?: number; beamMaxMm?: number; topology?: boolean; extendMm?: number; nodeMm?: number; thicknessProfile?: ThicknessProfile; layerTypeOverrides?: Record<string, StructureType | 'EXCLUDE'>; lineLayerIncludes?: Record<string, boolean> },
 ): StructModelResult => {
   const visible = new Map(layers.map((l) => [l.name, l.visible]));
   const overrides = opts?.layerTypeOverrides ?? {};
+  const lineIncludes = opts?.lineLayerIncludes ?? {};
   const resolveLayer = (name: string): StructureType | null => {
     const ov = overrides[name];
     if (ov === 'EXCLUDE') return null;
@@ -451,6 +452,65 @@ export const extractStructuralModel = (
     else if ((et === 'LWPOLYLINE' || et === 'POLYLINE') && Array.isArray(e.vertices) && e.vertices.length >= 2) {
       for (let i = 0; i < e.vertices.length - 1; i++) add(e.vertices[i], e.vertices[i + 1]);
       if (e.shape === true || e.closed === true) add(e.vertices[e.vertices.length - 1], e.vertices[0]);
+    }
+  }
+
+  // LINE 엔티티 클러스터링 — 사용자가 "LINE도 기둥으로 처리" 승인한 레이어 전용.
+  // 일부 DWG는 기둥을 닫힌 LWPOLYLINE 대신 LINE 여러 개로 표현함.
+  // 끝점이 가까운 LINE들을 연결 컴포넌트로 묶고 전체 꼭짓점에 minAreaRect 적용.
+  for (const [layerName, included] of Object.entries(lineIncludes)) {
+    if (!included) continue;
+    const cls = resolveLayer(layerName);
+    if (cls !== 'COLUMN') continue; // 현재는 기둥만 지원
+    if (visible.get(layerName) === false) continue;
+
+    const lineEnts = entities.filter((e) => e.layer === layerName && (e.type || '').toUpperCase() === 'LINE' && Array.isArray(e.vertices) && e.vertices.length >= 2);
+    if (!lineEnts.length) continue;
+
+    // 끝점 union-find 클러스터링 (5mm 허용오차)
+    const TOL_W = 5; // world mm
+    const allPts: { x: number; y: number }[] = [];
+    const linePtIdx: [number, number][] = [];
+    for (const e of lineEnts) {
+      const [s, en] = e.vertices as { x: number; y: number }[];
+      linePtIdx.push([allPts.length, allPts.length + 1]);
+      allPts.push({ x: s.x, y: s.y }, { x: en.x, y: en.y });
+    }
+    const parent = allPts.map((_, i) => i);
+    const find = (i: number): number => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+    const union = (a: number, b: number) => { parent[find(a)] = find(b); };
+    // 1) 근접 끝점 병합
+    for (let i = 0; i < allPts.length; i++)
+      for (let j = i + 1; j < allPts.length; j++) {
+        const dx = allPts[i].x - allPts[j].x, dy = allPts[i].y - allPts[j].y;
+        if (dx * dx + dy * dy < TOL_W * TOL_W) union(i, j);
+      }
+    // 2) 같은 LINE의 두 끝점도 합침 — L자형에서 한 선이 두 클러스터로 분리되는 버그 방지
+    for (const [si, ei] of linePtIdx) union(si, ei);
+
+    // 클러스터별 꼭짓점 수집
+    const clusters = new Map<number, Set<number>>();
+    for (let li = 0; li < lineEnts.length; li++) {
+      const [si] = linePtIdx[li];
+      const root = find(si);
+      if (!clusters.has(root)) clusters.set(root, new Set());
+      clusters.get(root)!.add(li);
+    }
+
+    for (const lineIdxSet of clusters.values()) {
+      // 해당 클러스터의 모든 꼭짓점 수집 (중복 제거)
+      const seen = new Set<string>();
+      const pts: { x: number; y: number }[] = [];
+      for (const li of lineIdxSet) {
+        for (const pt of lineEnts[li].vertices as { x: number; y: number }[]) {
+          const key = `${Math.round(pt.x)},${Math.round(pt.y)}`;
+          if (!seen.has(key)) { seen.add(key); pts.push(pt); }
+        }
+      }
+      if (pts.length < 2) continue;
+      const r = minAreaRect(pts.map((p) => ({ x: tx(p.x), y: ty(p.y) })));
+      if (!r || r.w < 1e-6 || r.h < 1e-6) continue;
+      cols.push({ cx: r.cx, cy: r.cy, w: r.w, h: r.h, deg: r.deg, layer: layerName });
     }
   }
 

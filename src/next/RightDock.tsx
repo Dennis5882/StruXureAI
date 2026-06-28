@@ -7,7 +7,7 @@ import { modelQuality } from './workflow';
 import { LayersTab } from './tabs/LayersTab';
 import { ReviewTab } from './tabs/ReviewTab';
 import { ExportTab } from './tabs/ExportTab';
-import type { LayerTypeOverrides } from './AppNext';
+import type { LayerTypeOverrides, LineLayerIncludes } from './AppNext';
 import type { StructureType } from '../types/drawing';
 
 export type TabKey = 'layers' | 'review' | 'export';
@@ -20,9 +20,11 @@ interface Props {
   setProfile: (p: ThicknessProfile) => void;
   layerTypeOverrides: LayerTypeOverrides;
   setLayerOverride: (name: string, type: StructureType | 'EXCLUDE' | 'AUTO') => void;
+  lineLayerIncludes: LineLayerIncludes;
+  setLineInclude: (name: string, include: boolean) => void;
 }
 
-export const RightDock: React.FC<Props> = ({ tab, setTab, onExtract, profile, setProfile, layerTypeOverrides, setLayerOverride }) => {
+export const RightDock: React.FC<Props> = ({ tab, setTab, onExtract, profile, setProfile, layerTypeOverrides, setLayerOverride, lineLayerIncludes, setLineInclude }) => {
   const { n } = useNext();
   const model = useDrawingStore((s) => s.model);
   const q = modelQuality(model);
@@ -55,7 +57,7 @@ export const RightDock: React.FC<Props> = ({ tab, setTab, onExtract, profile, se
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {tab === 'layers' && <LayersTab onExtract={onExtract} profile={profile} setProfile={setProfile} layerTypeOverrides={layerTypeOverrides} setLayerOverride={setLayerOverride} />}
+        {tab === 'layers' && <LayersTab onExtract={onExtract} profile={profile} setProfile={setProfile} layerTypeOverrides={layerTypeOverrides} setLayerOverride={setLayerOverride} lineLayerIncludes={lineLayerIncludes} setLineInclude={setLineInclude} />}
         {tab === 'review' && <ReviewTab />}
         {tab === 'export' && <ExportTab />}
       </div>

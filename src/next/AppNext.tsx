@@ -11,12 +11,14 @@ import { useNext } from './strings';
 import type { StructureType } from '../types/drawing';
 
 export type LayerTypeOverrides = Record<string, StructureType | 'EXCLUDE'>;
+export type LineLayerIncludes = Record<string, boolean>; // 사용자가 "LINE도 기둥/벽/보로 처리" 승인한 레이어
 
 export const AppNext: React.FC = () => {
   const { n } = useNext();
   const [tab, setTab] = useState<TabKey>('layers');
   const [profile, setProfile] = useState<ThicknessProfile>('raw');
   const [layerTypeOverrides, setLayerTypeOverrides] = useState<LayerTypeOverrides>({});
+  const [lineLayerIncludes, setLineLayerIncludes] = useState<LineLayerIncludes>({});
 
   const setLayerOverride = useCallback((layerName: string, type: StructureType | 'EXCLUDE' | 'AUTO') => {
     setLayerTypeOverrides((prev) => {
@@ -27,18 +29,22 @@ export const AppNext: React.FC = () => {
     });
   }, []);
 
+  const setLineInclude = useCallback((layerName: string, include: boolean) => {
+    setLineLayerIncludes((prev) => ({ ...prev, [layerName]: include }));
+  }, []);
+
   // ③ 추출: 부재 추출 → FloorModel 승격 → setModel. 결과는 alert 대신 검토 탭으로.
   const extract = useCallback(() => {
     const st = useDrawingStore.getState();
     if (!st.dxfEntities.length || !st.dxfTransform) { alert(n('loadFirst')); return; }
-    const { members, grid } = extractStructuralModel(st.dxfEntities, st.dxfLayers, st.dxfTransform, { thicknessProfile: profile, layerTypeOverrides });
+    const { members, grid } = extractStructuralModel(st.dxfEntities, st.dxfLayers, st.dxfTransform, { thicknessProfile: profile, layerTypeOverrides, lineLayerIncludes });
     if (members.length === 0) { alert(n('noStruct')); return; }
     st.addLines(members);
     const model = buildStructuralModel(members, grid, st.dxfTransform, { name: 'B1F' });
     st.setModel(model);
     st.setMode('SELECT');
     setTab('review'); // 추출 직후 자동으로 검토 패널 표시
-  }, [profile, n, layerTypeOverrides]);
+  }, [profile, n, layerTypeOverrides, lineLayerIncludes]);
 
   return (
     <div className="w-screen h-screen flex flex-col bg-zinc-950 overflow-hidden text-zinc-100">
@@ -47,7 +53,7 @@ export const AppNext: React.FC = () => {
         <div className="flex-1 relative min-w-0">
           <Workspace />
         </div>
-        <RightDock tab={tab} setTab={setTab} onExtract={extract} profile={profile} setProfile={setProfile} layerTypeOverrides={layerTypeOverrides} setLayerOverride={setLayerOverride} />
+        <RightDock tab={tab} setTab={setTab} onExtract={extract} profile={profile} setProfile={setProfile} layerTypeOverrides={layerTypeOverrides} setLayerOverride={setLayerOverride} lineLayerIncludes={lineLayerIncludes} setLineInclude={setLineInclude} />
       </div>
       <BottomBar />
       <Analytics />
