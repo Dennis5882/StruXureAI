@@ -5,6 +5,8 @@ import { ThicknessProfile, classifyLayer } from '../../utils/geometry';
 import { useNext } from '../strings';
 import type { LayerTypeOverrides, LineLayerIncludes } from '../AppNext';
 import type { StructureType } from '../../types/drawing';
+import { CropPanel } from '../CropPanel';
+import type { CropBBox } from '../CropPanel';
 
 type OverrideValue = StructureType | 'EXCLUDE' | 'AUTO';
 
@@ -16,6 +18,8 @@ interface Props {
   setLayerOverride: (name: string, type: OverrideValue) => void;
   lineLayerIncludes: LineLayerIncludes;
   setLineInclude: (name: string, include: boolean) => void;
+  cropBBox: CropBBox | null;
+  setCropBBox: (bbox: CropBBox | null) => void;
 }
 
 const TYPE_OPTIONS: { value: OverrideValue; label: string }[] = [
@@ -43,7 +47,7 @@ const TypeBadge: React.FC<{ type: StructureType | null; auto?: boolean }> = ({ t
   );
 };
 
-export const LayersTab: React.FC<Props> = ({ onExtract, profile, setProfile, layerTypeOverrides, setLayerOverride, lineLayerIncludes, setLineInclude }) => {
+export const LayersTab: React.FC<Props> = ({ onExtract, profile, setProfile, layerTypeOverrides, setLayerOverride, lineLayerIncludes, setLineInclude, cropBBox, setCropBBox }) => {
   const { n } = useNext();
   const dxfLayers = useDrawingStore((s) => s.dxfLayers);
   const dxfEntities = useDrawingStore((s) => s.dxfEntities);
@@ -89,6 +93,13 @@ export const LayersTab: React.FC<Props> = ({ onExtract, profile, setProfile, lay
           </select>
         </label>
       </div>
+
+      {/* 추출 범위 미니맵 — 파일 로드 후에만 표시 */}
+      {dxfEntities.length > 0 && (
+        <div className="p-2 border-b border-zinc-800">
+          <CropPanel cropBBox={cropBBox} setCropBBox={setCropBBox} />
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
         {dxfLayers.length === 0 ? (
