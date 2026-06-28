@@ -132,16 +132,22 @@ export const CropPanel: React.FC<Props> = ({ cropBBox, setCropBBox }) => {
     setDrag(null);
   };
 
-  // mini-map에 표시할 점들 (최대 2000개 샘플링)
+  // mini-map 점군 — SOLID 등 빈 엔티티가 많아 실제 점 수가 부족해지므로
+  // 목표 2000점이 채워질 때까지 step을 줄여가며 샘플링
   const dots = useMemo(() => {
-    const pts: { x: number; y: number; layer: string }[] = [];
-    let step = Math.max(1, Math.floor(dxfEntities.length / 400));
-    for (let i = 0; i < dxfEntities.length; i += step) {
+    const pts: { x: number; y: number }[] = [];
+    const TARGET = 2000;
+    let step = Math.max(1, Math.floor(dxfEntities.length / (TARGET * 3)));
+    for (let i = 0; i < dxfEntities.length && pts.length < TARGET * 2; i += step) {
       const e = dxfEntities[i];
       const ep = entityPoints(e);
       if (ep.length > 0) {
         const mid = ep[Math.floor(ep.length / 2)];
-        pts.push({ ...w2s(mid.x, mid.y), layer: e.layer });
+        const sv = w2s(mid.x, mid.y);
+        // percentile bounds 안에 있는 점만 표시
+        if (sv.x >= 0 && sv.x <= SVG_W && sv.y >= 0 && sv.y <= SVG_H) {
+          pts.push(sv);
+        }
       }
     }
     return pts;
@@ -205,7 +211,7 @@ export const CropPanel: React.FC<Props> = ({ cropBBox, setCropBBox }) => {
         >
           {/* 엔티티 점군 */}
           {dots.map((d, i) => (
-            <circle key={i} cx={d.x} cy={d.y} r={1} fill="rgba(148,163,184,0.35)" />
+            <circle key={i} cx={d.x} cy={d.y} r={1.2} fill="rgba(148,163,184,0.6)" />
           ))}
 
           {/* 기존 crop 범위 — 바깥 어둡게 */}
