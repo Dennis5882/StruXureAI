@@ -237,32 +237,41 @@ export const Workspace: React.FC = () => {
     // 레이어별 색상/가시성 조회 맵
     const layerMap = new Map(dxfLayers.map((l) => [l.name, l]));
 
-    // 1) 전체 바운딩 박스 계산
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const acc = (x: number, y: number) => {
-      if (!isFinite(x) || !isFinite(y)) return;
-      if (x < minX) minX = x; if (x > maxX) maxX = x;
-      if (y < minY) minY = y; if (y > maxY) maxY = y;
-    };
+    // 1) 전체 바운딩 박스 계산 — xref 실세계좌표 등 극단치 제거를 위해 percentile 방식 사용
+    const SKIP_TYPES = new Set(['TEXT','MTEXT','HATCH','SOLID','DIMENSION','ATTRIB','ATTDEF','INSERT']);
+    const allX: number[] = [], allY: number[] = [];
     dxfEntities.forEach((e: any) => {
-      if (Array.isArray(e.vertices)) e.vertices.forEach((v: any) => acc(v.x, v.y));
+      if (SKIP_TYPES.has((e.type || '').toUpperCase())) return;
+      const push = (x: number, y: number) => {
+        if (isFinite(x) && isFinite(y)) { allX.push(x); allY.push(y); }
+      };
+      if (Array.isArray(e.vertices)) e.vertices.forEach((v: any) => push(v.x, v.y));
       else if (e.center && typeof e.radius === 'number') {
-        // CIRCLE / ARC
-        acc(e.center.x - e.radius, e.center.y - e.radius);
-        acc(e.center.x + e.radius, e.center.y + e.radius);
+        push(e.center.x - e.radius, e.center.y - e.radius);
+        push(e.center.x + e.radius, e.center.y + e.radius);
       } else if (e.center && e.majorAxisEndPoint) {
-        // ELLIPSE
         const m = Math.hypot(e.majorAxisEndPoint.x, e.majorAxisEndPoint.y);
-        acc(e.center.x - m, e.center.y - m);
-        acc(e.center.x + m, e.center.y + m);
+        push(e.center.x - m, e.center.y - m);
+        push(e.center.x + m, e.center.y + m);
       }
-      // SPLINE 제어점/맞춤점
-      if (Array.isArray(e.controlPoints)) e.controlPoints.forEach((p: any) => acc(p.x, p.y));
-      if (Array.isArray(e.fitPoints)) e.fitPoints.forEach((p: any) => acc(p.x, p.y));
-      // TEXT/MTEXT 등 위치점
-      if (e.startPoint) acc(e.startPoint.x, e.startPoint.y);
-      if (e.position) acc(e.position.x, e.position.y);
+      if (Array.isArray(e.controlPoints)) e.controlPoints.forEach((p: any) => push(p.x, p.y));
+      if (Array.isArray(e.fitPoints)) e.fitPoints.forEach((p: any) => push(p.x, p.y));
+      if (e.startPoint) push(e.startPoint.x, e.startPoint.y);
+      if (e.position) push(e.position.x, e.position.y);
     });
+
+    // percentile 기반 bounds (극단치 제거: 하위 2% ~ 상위 2%)
+    const pct = (arr: number[], p: number) => {
+      const s = [...arr].sort((a, b) => a - b);
+      return s[Math.max(0, Math.floor(s.length * p / 100))];
+    };
+    let minX: number, minY: number, maxX: number, maxY: number;
+    if (allX.length === 0) { canvas.requestRenderAll(); return; }
+    minX = pct(allX, 2); maxX = pct(allX, 98);
+    minY = pct(allY, 2); maxY = pct(allY, 98);
+    // 너무 좁으면(점 하나 수준) 전체 범위로 폴백
+    if (maxX - minX < 1) { minX = Math.min(...allX); maxX = Math.max(...allX); }
+    if (maxY - minY < 1) { minY = Math.min(...allY); maxY = Math.max(...allY); }
 
     if (!isFinite(minX) || !isFinite(maxX)) { canvas.requestRenderAll(); return; }
 

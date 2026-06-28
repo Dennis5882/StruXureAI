@@ -43,17 +43,22 @@ export const CropPanel: React.FC<Props> = ({ cropBBox, setCropBBox }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<{ sx: number; sy: number; ex: number; ey: number } | null>(null);
 
-  // world 전체 extents
+  // world 전체 extents — xref 실세계좌표 극단치 제거를 위해 percentile 방식
   const worldExt = useMemo(() => {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const allX: number[] = [], allY: number[] = [];
     for (const e of dxfEntities) {
       for (const p of entityPoints(e)) {
-        if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
-        if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+        if (isFinite(p.x) && isFinite(p.y)) { allX.push(p.x); allY.push(p.y); }
       }
     }
-    if (!isFinite(minX)) return null;
-    return { minX, minY, maxX, maxY, w: maxX - minX || 1, h: maxY - minY || 1 };
+    if (allX.length === 0) return null;
+    const pct = (arr: number[], p: number) => {
+      const s = [...arr].sort((a, b) => a - b);
+      return s[Math.max(0, Math.floor(s.length * p / 100))];
+    };
+    const minX = pct(allX, 2), maxX = pct(allX, 98);
+    const minY = pct(allY, 2), maxY = pct(allY, 98);
+    return { minX, minY, maxX, maxY, w: (maxX - minX) || 1, h: (maxY - minY) || 1 };
   }, [dxfEntities]);
 
   // world → SVG 좌표 (Y 반전, 패딩 포함)
