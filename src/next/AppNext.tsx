@@ -40,8 +40,9 @@ export const AppNext: React.FC = () => {
   useEffect(() => {
     const unsubscribe = useDrawingStore.subscribe((state) => {
       const count = state.dxfEntities.length;
-      if (count > 0 && prevEntityCount.current === 0) {
-        // 새 파일 로드 — 구조 레이어만 표시
+      const wasEmpty = prevEntityCount.current === 0;
+      prevEntityCount.current = count; // setDxfLayers 호출 전에 먼저 갱신 (무한루프 방지)
+      if (count > 0 && wasEmpty) {
         const kw = ['S-', 'COL', 'WALL', 'CONC', '기둥', '옹벽'];
         const hasStructural = state.dxfLayers.some((l) =>
           kw.some((k) => l.name.toUpperCase().includes(k))
@@ -55,7 +56,6 @@ export const AppNext: React.FC = () => {
           );
         }
       }
-      prevEntityCount.current = count;
     });
     return unsubscribe;
   }, []);
