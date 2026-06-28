@@ -295,6 +295,12 @@ export const Workspace: React.FC = () => {
       let obj: fabric.Object | null = null;
 
       const type = (e.type || '').toUpperCase();
+      // 비구조 엔티티 스킵: 텍스트/해치/치수/삽입블록은 구조 추출에 불필요하고 성능·가시성 저하
+      if (type === 'TEXT' || type === 'MTEXT' || type === 'HATCH' || type === 'SOLID' ||
+          type === 'DIMENSION' || type === 'ATTRIB' || type === 'ATTDEF' || type === 'INSERT') return;
+      // 숨겨진 레이어는 fabric에 추가 자체를 건너뜀
+      if (!visible) return;
+
       if (type === 'LINE' && Array.isArray(e.vertices) && e.vertices.length >= 2) {
         const [a, b] = e.vertices;
         obj = new fabric.Line([tx(a.x), ty(a.y), tx(b.x), ty(b.y)], base);
@@ -315,24 +321,10 @@ export const Workspace: React.FC = () => {
           .map((p) => ({ x: tx(p.x), y: ty(p.y) }));
         obj = new fabric.Polyline(pts, { ...base, objectCaching: false });
       } else if (type === 'SPLINE') {
-        // 정밀 NURBS 평가 대신 맞춤점/제어점을 잇는 폴리라인으로 근사
         const src = (Array.isArray(e.fitPoints) && e.fitPoints.length >= 2) ? e.fitPoints : e.controlPoints;
         if (Array.isArray(src) && src.length >= 2) {
           const pts = src.map((p: any) => ({ x: tx(p.x), y: ty(p.y) }));
           obj = new fabric.Polyline(pts, { ...base, objectCaching: false });
-        }
-      } else if (type === 'TEXT' || type === 'MTEXT') {
-        const pos = e.startPoint || e.position;
-        const raw = (e.text || '').replace(/\\[A-Za-z][^;]*;|[{}]/g, '').trim(); // MTEXT 포맷 코드 간이 제거
-        const h = (e.textHeight || e.height || 0) * scale;
-        if (pos && raw) {
-          obj = new fabric.Text(raw, {
-            left: tx(pos.x), top: ty(pos.y),
-            fontSize: Math.max(8, Math.min(h || 12, 200)),
-            fill: color, stroke: undefined,
-            originX: 'left', originY: 'bottom',
-            fontFamily: 'sans-serif', selectable: false, evented: false, visible,
-          });
         }
       }
 
