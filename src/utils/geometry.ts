@@ -95,7 +95,7 @@ export const minAreaRect = (
 
 // ── 레이어 분류 ─────────────────────────────────────────────
 // 조적벽(비내력)은 구조 부재에서 제외 (벽 키워드보다 먼저 판정)
-const classifyLayer = (name: string): StructureType | null => {
+export const classifyLayer = (name: string): StructureType | null => {
   const u = (name || '').toUpperCase();
   if (/MASONRY|조적|벽돌|BRICK|磚|砌/.test(u)) return null;
   if (/COL|기둥|柱/.test(u)) return 'COLUMN';
@@ -221,7 +221,7 @@ export const extractMembersFromDxf = (
 
   for (const e of entities) {
     if (members.length + cols.length >= cap) { truncated = true; break; }
-    const cls = classifyLayer(e.layer);
+    const cls = resolveLayer(e.layer);
     if (!cls) continue;
     if (visible.get(e.layer) === false) continue;
 
@@ -397,9 +397,16 @@ export const extractStructuralModel = (
   entities: any[],
   layers: { name: string; visible: boolean }[],
   t: DxfTransform,
-  opts?: { wallMinMm?: number; wallMaxMm?: number; beamMinMm?: number; beamMaxMm?: number; topology?: boolean; extendMm?: number; nodeMm?: number; thicknessProfile?: ThicknessProfile },
+  opts?: { wallMinMm?: number; wallMaxMm?: number; beamMinMm?: number; beamMaxMm?: number; topology?: boolean; extendMm?: number; nodeMm?: number; thicknessProfile?: ThicknessProfile; layerTypeOverrides?: Record<string, StructureType | 'EXCLUDE'> },
 ): StructModelResult => {
   const visible = new Map(layers.map((l) => [l.name, l.visible]));
+  const overrides = opts?.layerTypeOverrides ?? {};
+  const resolveLayer = (name: string): StructureType | null => {
+    const ov = overrides[name];
+    if (ov === 'EXCLUDE') return null;
+    if (ov) return ov as StructureType;
+    return classifyLayer(name);
+  };
   const tx = (x: number) => t.pad + (x - t.minX) * t.scale;
   const ty = (y: number) => t.pad + (t.maxY - y) * t.scale;
   const scale = t.scale || 1;
@@ -426,7 +433,7 @@ export const extractStructuralModel = (
   type Col = { cx: number; cy: number; w: number; h: number; deg: number; layer: string };
   const cols: Col[] = [];
   for (const e of entities) {
-    const cls = classifyLayer(e.layer);
+    const cls = resolveLayer(e.layer);
     if (!cls) continue;
     if (visible.get(e.layer) === false) continue;
     if (cls === 'COLUMN') {
