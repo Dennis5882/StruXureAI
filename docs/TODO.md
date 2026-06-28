@@ -1,7 +1,7 @@
 # StruXureAI — 진행상황 & 앞으로 할 일 (통합 기록)
 
 > 이 문서는 작업 핸드오프용 단일 기록. 대화가 압축돼도 여기서 맥락을 복구한다.
-> 기준 버전: **v0.27.1** · 갱신: 2026-06-24 · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.27.1** · 갱신: 2026-06-28 · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 🌟 북극성: **구조 평면도를 제대로 만들기 + 그 이후를 위한 기반 다지기** (추출 정확도·데이터 기반 우선; 해석/AI는 그 위에)
 > 함께 보기: [ROADMAP.md](./ROADMAP.md)(단계별 로드맵·추천경로) · [STRUCTURAL_MODEL.md](./STRUCTURAL_MODEL.md)(정밀추출 설계) · [MODULES.md](./MODULES.md)(OSS 조사)
 
@@ -44,8 +44,9 @@
 
 ### ⭐ 지금 다음 한 수 (범위 = 모델링+핸드오프, 해석 제외)
 > 자세한 단계는 [ROADMAP.md](./ROADMAP.md). 현재 v0.27.1: 추출(벽96%)→FloorModel(절점그래프)→Gen NX 핸드오프 **동작**.
-- **D1 원클릭 흐름** (✅ B1F로 검증 가능): DWG 열기→자동필터→추출→model까지 한 번에, 전송만 클릭. "빠르게"에 직결. **가장 추천**.
-- **C1 실도면 일반성** (⚠️ B1F 외 다른 DWG 필요 — 사용자 제공): 다양한 레이어 관례 대응. "정확한 모델링"의 일반화.
+> UI v2(`index.next.html`) 검토 중: 5단계 스테퍼·레이어 타입 지정·LINE 확인 배너·검토 탭·하단 상태바 포함. Vercel 배포 완료(`/index.next.html`).
+- **U3 검토→수정 루프** (UI v2 다음 단계): 부재 클릭 → 두께/단면 인라인 편집, 자유단 캔버스 하이라이트. "정확하게"에 올인.
+- **C1 실도면 일반성** (⚠️ B1F 외 다른 DWG 필요 — 사용자 제공): 레이어 수동 지정 기능 추가됨으로 다른 관례 도면도 대응 가능. 새 도면 제공 시 테스트 바로 가능.
 - **B1 다층**(다중 DWG→BuildingModel) + **B2 Story Data 등록** + **A4 다층 라이브 재전송**(Gen NX 재연결): 한 동(棟) 핸드오프.
 - 핸드오프 다듬기: **dxfExport도 model 소비**(현재 px lines).
 - ❌ 범위 밖: 하중/지진/풍·하중조합·해석실행 (Gen NX에서).
@@ -63,7 +64,15 @@
    - 남은 연결성: 자유단 ~39개 중 ~14 정상(개방단부), ~13 근접갭(150-400mm), ~10 코너 미세갭. 추가 개선 여지(저위험 우선).
    - 남은 커버리지 ~4%: 짝 매칭 놓친 면(파트너 있으나 미매칭).
 7. **[P4a] 단일층 MIDAS 내보내기** ✅ **완료(v0.19.0)** — `midasExport.ts`(buildMidasRequests/sendMidas/toPythonScript) + `MidasExport.tsx` 패널. 절점+BEAM/PLATE 요소, CNS560 더미재질.
-8. **[P4b] 다층 + 위상강화**:
+9. ~~**UI v2 (워크플로 셸)**~~ ✅ **완료(2026-06-28)** — `index.next.html`+`src/next/` 격리 엔트리. 기존 파일 무수정. Vercel 멀티페이지 빌드 등록(`vite.config.ts` rollupOptions.input).
+   - **StepperBar**: 5단계 클릭 가능 스테퍼 + "다음 한 수" CTA(워크플로 자동 판단)
+   - **RightDock 3탭**: 레이어 탭(타입 지정 드롭다운) / 검토 탭(alert→라이브 품질 카드) / 내보내기 탭
+   - **레이어 수동 타입 지정** [`classifyLayer` export + `layerTypeOverrides` opts]: 레이어별 `자동/벽/기둥/보/제외` 드롭다운. override 우선, AUTO면 휴리스틱 폴백.
+   - **LINE 확인 배너** [`lineLayerIncludes` + union-find 클러스터링]: 구조 타입 레이어에 LINE 있으면 "이것도 기둥인가요?" 배너. 예 클릭 → L자형 LINE 쌍 클러스터로 묶어 minAreaRect 추출. B1F: CON_COLUMN 기둥 50→**60** (+10, L자형 10그룹).
+   - **BottomBar**: DXF엔티티·절점·부재·자유단·zoom 하단 고정 (자유단 amber).
+   - **dev WASM 픽스**: `optimizeDeps: { exclude: ['@mlightcad/libredwg-web'] }`.
+   - 남은 UI: U3(검토→수정 루프), CON_WALL LINE 배너 처리(현재 기둥만 구현).
+10. **[P4b] 다층 + 위상강화**:
    - ~~라이브 전송 실환경 검증~~ ✅ **완료(v0.22.1)** — 실제 Gen NX에 절점218·기둥50·벽39 생성 확인, CORS 무문제. `/doc/save` 제거(저장 모달이 모델 폐기시키던 문제).
    - ~~다층 스택(수직 복제)~~ ✅ **완료(v0.23.0)** — `stories` 옵션, 평면 N층 복제(기둥 수직 연속, 베이스 z=0). N=3 페이로드 검증. **라이브 N≥2 전송은 재연결 후 확인 필요**(테스트 키 세션 종료됨).
    - ~~midasExport가 model 소비~~ ✅ **완료(v0.27.1)** — `buildMidasRequests(model, opts)`. 공유절점 82개 MIDAS로 직결 검증.
