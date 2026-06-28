@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import { Workspace } from '../components/Workspace';
 import { useDrawingStore } from '../store/useDrawingStore';
@@ -33,6 +33,31 @@ export const AppNext: React.FC = () => {
 
   const setLineInclude = useCallback((layerName: string, include: boolean) => {
     setLineLayerIncludes((prev) => ({ ...prev, [layerName]: include }));
+  }, []);
+
+  // DWG 로드 시 구조 레이어 자동필터 실행
+  const prevEntityCount = useRef(0);
+  useEffect(() => {
+    const unsubscribe = useDrawingStore.subscribe((state) => {
+      const count = state.dxfEntities.length;
+      if (count > 0 && prevEntityCount.current === 0) {
+        // 새 파일 로드 — 구조 레이어만 표시
+        const kw = ['S-', 'COL', 'WALL', 'CONC', '기둥', '옹벽'];
+        const hasStructural = state.dxfLayers.some((l) =>
+          kw.some((k) => l.name.toUpperCase().includes(k))
+        );
+        if (hasStructural) {
+          useDrawingStore.getState().setDxfLayers(
+            state.dxfLayers.map((l) => ({
+              ...l,
+              visible: kw.some((k) => l.name.toUpperCase().includes(k)),
+            }))
+          );
+        }
+      }
+      prevEntityCount.current = count;
+    });
+    return unsubscribe;
   }, []);
 
   // ③ 추출: 부재 추출 → FloorModel 승격 → setModel. 결과는 alert 대신 검토 탭으로.
