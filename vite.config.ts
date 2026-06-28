@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { readFileSync } from 'node:fs'
 import { execSync } from 'node:child_process'
+import { resolve } from 'node:path'
 
 // package.json 버전 읽기
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
@@ -18,10 +19,15 @@ const buildDate = new Date().toISOString().slice(0, 10)
 
 export default defineConfig({
   plugins: [react()],
-  // DWG 변환용 LibreDWG WASM은 사전번들(.vite/deps)에 들어가면 dev에서 .wasm URL이 깨진다
-  // (HTML 폴백 → "Incorrect MIME / magic word" 오류). 사전번들에서 제외하면 dev에서도 정상 로드.
-  // 프로덕션 빌드에는 영향 없음(이 옵션은 dev 최적화 전용).
   optimizeDeps: { exclude: ['@mlightcad/libredwg-web'] },
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        next: resolve(__dirname, 'index.next.html'),
+      },
+    },
+  },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __APP_DEVELOPER__: JSON.stringify('Dennis'),
