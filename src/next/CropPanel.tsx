@@ -1,5 +1,5 @@
 import React, { useRef, useState, useMemo, useCallback } from 'react';
-import { CropIcon, X, RotateCcw } from 'lucide-react';
+import { CropIcon, RotateCcw, MousePointerSquareDashed } from 'lucide-react';
 import { useDrawingStore } from '../store/useDrawingStore';
 
 export interface CropBBox {
@@ -39,6 +39,9 @@ export const filterEntitiesByCrop = (entities: any[], bbox: CropBBox | null): an
 
 export const CropPanel: React.FC<Props> = ({ cropBBox, setCropBBox }) => {
   const dxfEntities = useDrawingStore((s) => s.dxfEntities);
+  const currentMode = useDrawingStore((s) => s.currentMode);
+  const setMode = useDrawingStore((s) => s.setMode);
+  const cropActive = currentMode === 'CROP';
 
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<{ sx: number; sy: number; ex: number; ey: number } | null>(null);
@@ -197,7 +200,28 @@ export const CropPanel: React.FC<Props> = ({ cropBBox, setCropBBox }) => {
         </div>
       </div>
 
-      {/* 미니맵 */}
+      {/* 도면에서 직접 선택 — 주 동작 (미니맵은 보조) */}
+      <div className="px-2 pt-2">
+        <button
+          onClick={() => setMode(cropActive ? 'SELECT' : 'CROP')}
+          className={`w-full flex items-center justify-center gap-1.5 text-[11px] font-medium px-2 py-2 rounded transition-colors ${
+            cropActive
+              ? 'bg-indigo-500 text-white hover:bg-indigo-400'
+              : 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700'
+          }`}
+        >
+          <MousePointerSquareDashed size={13} />
+          <span>{cropActive ? '선택 중… (도면에서 드래그)' : '도면에서 직접 선택'}</span>
+        </button>
+        {cropActive && (
+          <p className="text-[10px] text-indigo-300/80 text-center mt-1">
+            캔버스에서 추출할 범위를 드래그하세요
+          </p>
+        )}
+      </div>
+
+      {/* 미니맵 (보조) */}
+      <div className="px-2 pt-1.5 pb-0.5 text-[10px] text-zinc-500">또는 아래 미니맵에서 지정</div>
       <div className="relative bg-zinc-950/80">
         <svg
           ref={svgRef}

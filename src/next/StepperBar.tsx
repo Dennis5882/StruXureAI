@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { Layers, ImagePlus, FileUp, ArrowRight, Check } from 'lucide-react';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { loadFile } from '../utils/fileLoader';
-import { LANGS } from '../i18n';
+import { LANGS, type Lang } from '../i18n';
 import { useNext } from './strings';
 import { deriveWorkflow, NextKey } from './workflow';
 import type { TabKey } from './RightDock';
@@ -67,16 +67,24 @@ export const StepperBar: React.FC<Props> = ({ onExtract, setTab }) => {
         </div>
 
         <div className="flex items-center space-x-3">
-          {/* 다음 한 수 CTA */}
-          <button onClick={runCta} className="flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 shadow-md">
-            <span>{ctaLabel[wf.next]}</span>
-            <ArrowRight size={14} />
-          </button>
-          <div className="flex items-center bg-zinc-950 p-0.5 rounded-md border border-zinc-800">
+          {/* 다음 한 수 CTA — '도면 열기'는 좌측 이미지/CAD 버튼과 중복이라 파일 로드 후에만 노출 */}
+          {wf.next !== 'open' && (
+            <button onClick={runCta} className="flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 shadow-md">
+              <span>{ctaLabel[wf.next]}</span>
+              <ArrowRight size={14} />
+            </button>
+          )}
+          {/* 언어 선택 (드롭다운) */}
+          <select
+            value={lang}
+            onChange={(e) => setLang(e.target.value as Lang)}
+            className="text-[11px] bg-zinc-950 text-zinc-300 border border-zinc-800 rounded-md px-2 py-1.5 hover:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+            aria-label="Language"
+          >
             {LANGS.map((l) => (
-              <button key={l.id} onClick={() => setLang(l.id)} className={`text-[11px] px-1.5 py-1 rounded ${lang === l.id ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>{l.label}</button>
+              <option key={l.id} value={l.id} className="bg-zinc-900 text-zinc-200">{l.label}</option>
             ))}
-          </div>
+          </select>
         </div>
       </div>
 

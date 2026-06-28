@@ -18,6 +18,14 @@ export interface DxfTransform {
   pad: number;
 }
 
+// 📦 추출 범위 (world mm). 미니맵 또는 캔버스 CROP 모드에서 지정.
+export interface CropRegion {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 interface DrawingState {
   currentMode: DrawingMode;
   currentType: StructureType;
@@ -41,6 +49,7 @@ interface DrawingState {
   dxfLayers: DxfLayer[];
   dxfEntities: any[];
   dxfTransform: DxfTransform | null;
+  cropBBox: CropRegion | null; // 추출 범위 (미니맵/캔버스 CROP 공유)
   isSidebarOpen: boolean;
   isHelpOpen: boolean;
   lang: 'ko' | 'en' | 'zh';
@@ -65,6 +74,7 @@ interface DrawingState {
   setDxfLayers: (layers: DxfLayer[]) => void;
   setDxfEntities: (entities: any[]) => void;
   setDxfTransform: (t: DxfTransform | null) => void;
+  setCropBBox: (b: CropRegion | null) => void;
   toggleDxfLayer: (name: string) => void;
   toggleSidebar: () => void;
   toggleHelp: () => void;
@@ -105,6 +115,7 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   dxfLayers: [],
   dxfEntities: [],
   dxfTransform: null,
+  cropBBox: null,
   isSidebarOpen: false,
   isHelpOpen: false,
   lang: 'ko',
@@ -127,6 +138,7 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   setDxfLayers: (dxfLayers) => set({ dxfLayers }),
   setDxfEntities: (dxfEntities) => set({ dxfEntities }),
   setDxfTransform: (dxfTransform) => set({ dxfTransform }),
+  setCropBBox: (cropBBox) => set({ cropBBox }),
   toggleDxfLayer: (name) => set((state) => ({
     dxfLayers: state.dxfLayers.map((layer) =>
       layer.name === name ? { ...layer, visible: !layer.visible } : layer

@@ -72,7 +72,7 @@ export const Workspace: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [resizeTick, setResizeTick] = useState(0); // 영역 크기 변화 시 도면 재맞춤 트리거
 
-  const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale, isLoadingFile, loadingMessage, gridSize } = useDrawingStore();
+  const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale, isLoadingFile, loadingMessage, gridSize, cropBBox } = useDrawingStore();
   const { t } = useT();
 
   // ⌨️ 단축키(Ctrl+Z)로 실행 취소 기능 연동
@@ -275,6 +275,13 @@ export const Workspace: React.FC = () => {
 
     if (!isFinite(minX) || !isFinite(maxX)) { canvas.requestRenderAll(); return; }
 
+    // 1-b) 미니맵에서 추출 범위(crop)를 지정했으면 그 영역에 맞춰 확대한다.
+    //      → 4장 도면 중 선택한 한 장이 화면을 채워 B1F 수준의 정밀도로 보인다.
+    if (cropBBox && cropBBox.maxX > cropBBox.minX && cropBBox.maxY > cropBBox.minY) {
+      minX = cropBBox.minX; maxX = cropBBox.maxX;
+      minY = cropBBox.minY; maxY = cropBBox.maxY;
+    }
+
     // 2) 캔버스에 맞춘 스케일/오프셋 (DXF Y축은 위로 향하므로 뒤집음)
     const pad = 40;
     const dxfW = (maxX - minX) || 1;
@@ -282,7 +289,8 @@ export const Workspace: React.FC = () => {
     // 구조부재(CAD 추출)가 이미 있으면 리사이즈 시 스케일을 고정해 정합 유지.
     // (px 좌표로 저장된 부재가 스케일 변경에 따라가지 못해 어긋나는 문제 방지)
     const hasCadMembers = useDrawingStore.getState().lines.some((l) => l.source === 'CAD');
-    const sameFile = dxfFitRef.current?.entities === dxfEntities;
+    // crop 지정 중에는 선택 영역에 맞춰 매번 재맞춤 (고정 스케일 재사용 안 함)
+    const sameFile = dxfFitRef.current?.entities === dxfEntities && !cropBBox;
     let scale: number;
     if (sameFile && hasCadMembers && dxfFitRef.current) {
       scale = dxfFitRef.current.scale; // 고정값 재사용
@@ -345,7 +353,7 @@ export const Workspace: React.FC = () => {
     });
 
     canvas.requestRenderAll();
-  }, [dxfEntities, dxfLayers, resizeTick]);
+  }, [dxfEntities, dxfLayers, resizeTick, cropBBox]);
 
   // 🤖 AI 인식 폴리곤 렌더링 (반투명 오버레이)
   useEffect(() => {
@@ -420,6 +428,10 @@ export const Workspace: React.FC = () => {
     let draggingVertex = false;
     let vertexDrag: { id: string; index: number } | null = null; // 끝점 드래그 중
     let lineMove: { id: string; sx: number; sy: number; coords: Point2D[] } | null = null; // 선 전체 이동 중(시작 기준)
+    // 📦 범위 선택(CROP) 상태 — 캔버스에서 직접 박스를 끌어 추출 범위를 지정
+    let isCropping = false;
+    let cropStart = { x: 0, y: 0 };
+    let cropRectObj: fabric.Rect | null = null;
 
     const lineColorMap: Record<string, string> = { WALL: '#ef4444', COLUMN: '#3b82f6', BEAM: '#22c55e', CENTER_LINE: '#f59e0b' };
 
@@ -542,6 +554,22 @@ export const Workspace: React.FC = () => {
         return;
       }
 
+      // 📦 범위 선택 모드 → 캔버스에서 박스 드래그 시작
+      if (mode === 'CROP') {
+        const p = canvas.getPointer(opt.e);
+        isCropping = true;
+        cropStart = { x: p.x, y: p.y };
+        cropRectObj = new fabric.Rect({
+          left: p.x, top: p.y, width: 0, height: 0,
+          fill: 'rgba(99,102,241,0.12)', stroke: '#818cf8', strokeWidth: 1,
+          strokeDashArray: [6, 3], strokeUniform: true,
+          selectable: false, evented: false,
+        });
+        (cropRectObj as any).isCropOverlay = true;
+        canvas.add(cropRectObj);
+        return;
+      }
+
       if (!mode.startsWith('DRAW_')) return;
 
       isDrawing = true;
@@ -623,6 +651,19 @@ export const Workspace: React.FC = () => {
         return;
       }
 
+      // 📦 범위 선택 박스 실시간 갱신
+      if (isCropping && cropRectObj) {
+        const p = canvas.getPointer(opt.e);
+        cropRectObj.set({
+          left: Math.min(cropStart.x, p.x),
+          top: Math.min(cropStart.y, p.y),
+          width: Math.abs(p.x - cropStart.x),
+          height: Math.abs(p.y - cropStart.y),
+        });
+        canvas.requestRenderAll();
+        return;
+      }
+
       if (!isDrawing || !currentShape || !currentText) return;
       const state = useDrawingStore.getState();
       const pointer = canvas.getPointer(opt.e);
@@ -674,6 +715,28 @@ export const Workspace: React.FC = () => {
       if (isPanning) {
         isPanning = false;
         canvas.setViewportTransform(canvas.viewportTransform);
+        return;
+      }
+
+      // 📦 범위 선택 종료 → px 박스를 world mm로 환산해 store에 저장
+      if (isCropping) {
+        isCropping = false;
+        const st = useDrawingStore.getState();
+        const rect = cropRectObj;
+        if (cropRectObj) { canvas.remove(cropRectObj); cropRectObj = null; }
+        const t = st.dxfTransform;
+        // 너무 작은 드래그(오클릭)는 취소, dxfTransform 없으면 환산 불가
+        if (rect && t && (rect.width ?? 0) > 5 && (rect.height ?? 0) > 5) {
+          const L = rect.left ?? 0, T = rect.top ?? 0;
+          const W = rect.width ?? 0, H = rect.height ?? 0;
+          const wx = (px: number) => t.minX + (px - t.pad) / t.scale;
+          const wy = (py: number) => t.maxY - (py - t.pad) / t.scale;
+          st.setCropBBox({
+            minX: wx(L), maxX: wx(L + W),
+            minY: wy(T + H), maxY: wy(T), // 화면 아래(top+H)가 world Y 최소
+          });
+        }
+        st.setMode('SELECT'); // 한 번 지정 후 자동으로 선택 모드 복귀
         return;
       }
 
@@ -783,6 +846,8 @@ export const Workspace: React.FC = () => {
       canvas.selection = false;
       canvas.forEachObject((obj) => { obj.selectable = false; obj.evented = false; });
     }
+    // 📦 범위 선택 모드는 십자 커서로 안내
+    canvas.defaultCursor = currentMode === 'CROP' ? 'crosshair' : 'default';
     canvas.requestRenderAll();
   }, [currentMode]);
 
@@ -825,7 +890,8 @@ export const Workspace: React.FC = () => {
       <div className="absolute bottom-4 left-4 z-10 bg-black/70 text-zinc-300 text-xs px-3 py-1.5 rounded pointer-events-none font-mono">
         {currentMode === 'SELECT' && t('ws.hintSelect')}
         {currentMode === 'DELETE' && t('ws.hintDelete')}
-        {currentMode !== 'SELECT' && currentMode !== 'DELETE' && t('ws.hintDraw')}
+        {currentMode === 'CROP' && '드래그하여 추출할 도면 범위를 지정하세요'}
+        {currentMode !== 'SELECT' && currentMode !== 'DELETE' && currentMode !== 'CROP' && t('ws.hintDraw')}
       </div>
       {/* 🖱️ 드래그앤드롭 오버레이 */}
       {isDragging && (

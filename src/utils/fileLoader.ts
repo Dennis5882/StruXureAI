@@ -122,6 +122,12 @@ const parseDxfText = (text: string) => {
     }
   });
 
+  // 새 파일 로드 전, 직전 파일에서 추출된 구조모델/부재/뷰포트를 초기화한다.
+  // (이걸 안 하면 이전 도면의 그리드 라벨·기둥이 새 도면 위에 겹쳐 보인다)
+  store.setModel(null);
+  store.clearLines();
+  store.resetViewport();
+  store.setCropBBox(null);
   store.setDxfLayers(layers);
   store.setDxfEntities(entities);
   if (!store.isSidebarOpen) store.toggleSidebar();

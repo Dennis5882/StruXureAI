@@ -1,6 +1,6 @@
 export type StructureType = 'WALL' | 'COLUMN' | 'BEAM' | 'CENTER_LINE';
 export type SourceType = 'CAD' | 'AI' | 'MANUAL';
-export type DrawingMode = 'SELECT' | 'DRAW_LINE' | 'DRAW_RECT' | 'DRAW_CIRCLE' | 'DRAW_TRIANGLE' | 'DELETE';
+export type DrawingMode = 'SELECT' | 'DRAW_LINE' | 'DRAW_RECT' | 'DRAW_CIRCLE' | 'DRAW_TRIANGLE' | 'DELETE' | 'CROP';
 
 export interface Point2D {
   x: number;

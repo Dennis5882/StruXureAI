@@ -9,7 +9,7 @@ import { RightDock, TabKey } from './RightDock';
 import { BottomBar } from './BottomBar';
 import { useNext } from './strings';
 import type { StructureType } from '../types/drawing';
-import { type CropBBox, filterEntitiesByCrop } from './CropPanel';
+import { filterEntitiesByCrop } from './CropPanel';
 
 export type LayerTypeOverrides = Record<string, StructureType | 'EXCLUDE'>;
 export type LineLayerIncludes = Record<string, boolean>; // 사용자가 "LINE도 기둥/벽/보로 처리" 승인한 레이어
@@ -20,7 +20,9 @@ export const AppNext: React.FC = () => {
   const [profile, setProfile] = useState<ThicknessProfile>('raw');
   const [layerTypeOverrides, setLayerTypeOverrides] = useState<LayerTypeOverrides>({});
   const [lineLayerIncludes, setLineLayerIncludes] = useState<LineLayerIncludes>({});
-  const [cropBBox, setCropBBox] = useState<CropBBox | null>(null);
+  // crop 범위는 store가 단일 출처 — 캔버스 CROP 모드와 미니맵이 공유, 파일 로드 시 자동 초기화.
+  const cropBBox = useDrawingStore((s) => s.cropBBox);
+  const setCropBBox = useDrawingStore((s) => s.setCropBBox);
 
   const setLayerOverride = useCallback((layerName: string, type: StructureType | 'EXCLUDE' | 'AUTO') => {
     setLayerTypeOverrides((prev) => {
@@ -40,7 +42,7 @@ export const AppNext: React.FC = () => {
   const extract = useCallback(() => {
     const st = useDrawingStore.getState();
     if (!st.dxfEntities.length || !st.dxfTransform) { alert(n('loadFirst')); return; }
-    const entitiesToExtract = filterEntitiesByCrop(st.dxfEntities, cropBBox);
+    const entitiesToExtract = filterEntitiesByCrop(st.dxfEntities, st.cropBBox);
     const { members, grid } = extractStructuralModel(entitiesToExtract, st.dxfLayers, st.dxfTransform, { thicknessProfile: profile, layerTypeOverrides, lineLayerIncludes });
     if (members.length === 0) { alert(n('noStruct')); return; }
     st.addLines(members);
@@ -48,7 +50,7 @@ export const AppNext: React.FC = () => {
     st.setModel(model);
     st.setMode('SELECT');
     setTab('review'); // 추출 직후 자동으로 검토 패널 표시
-  }, [profile, n, layerTypeOverrides, lineLayerIncludes, cropBBox]);
+  }, [profile, n, layerTypeOverrides, lineLayerIncludes]);
 
   return (
     <div className="w-screen h-screen flex flex-col bg-zinc-950 overflow-hidden text-zinc-100">
