@@ -4,6 +4,7 @@ import { useDrawingStore } from '../store/useDrawingStore';
 import { loadFiles } from '../utils/fileLoader';
 import { Point2D } from '../types/drawing';
 import { useT } from '../i18n';
+import { worldToCanvas, nodeDegrees } from '../utils/structuralModel';
 
 // 그리드 스냅: g>0이면 가장 가까운 격자점으로 반올림
 const snapTo = (v: number, g: number): number => (g > 0 ? Math.round(v / g) * g : v);
@@ -72,7 +73,7 @@ export const Workspace: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [resizeTick, setResizeTick] = useState(0); // 영역 크기 변화 시 도면 재맞춤 트리거
 
-  const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale, isLoadingFile, loadingMessage, gridSize, cropBBox } = useDrawingStore();
+  const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale, isLoadingFile, loadingMessage, gridSize, cropBBox, model, selectedMemberId } = useDrawingStore();
   const { t } = useT();
 
   // ⌨️ 단축키(Ctrl+Z)로 실행 취소 기능 연동
@@ -354,6 +355,66 @@ export const Workspace: React.FC = () => {
 
     canvas.requestRenderAll();
   }, [dxfEntities, dxfLayers, resizeTick, cropBBox]);
+
+  // 🔶 모델 오버레이: 자유단(연결 안 된 벽/보 끝점) 강조 + 검토 탭 선택 부재 하이라이트
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    canvas.getObjects().filter((o: any) => o.isModelOverlay).forEach((o) => canvas.remove(o));
+
+    const t = useDrawingStore.getState().dxfTransform;
+    if (!model || !t) { canvas.requestRenderAll(); return; }
+    const nodeById = new Map(model.nodes.map((n) => [n.id, n]));
+
+    // 자유단: 벽/보 전용 차수 ≤ 1 인 끝점 절점
+    const degWB = new Map<string, number>();
+    const inc = (id: string) => degWB.set(id, (degWB.get(id) || 0) + 1);
+    model.walls.forEach((w) => { inc(w.i); inc(w.j); });
+    model.beams.forEach((b) => { inc(b.i); inc(b.j); });
+    degWB.forEach((d, id) => {
+      if (d > 1) return;
+      const nd = nodeById.get(id); if (!nd) return;
+      const p = worldToCanvas(nd, t);
+      const ring = new fabric.Circle({
+        left: p.x, top: p.y, radius: 7, originX: 'center', originY: 'center',
+        fill: 'rgba(245,158,11,0.18)', stroke: '#f59e0b', strokeWidth: 1.5,
+        selectable: false, evented: false,
+      });
+      (ring as any).isModelOverlay = true;
+      canvas.add(ring);
+    });
+
+    // 선택 부재 하이라이트
+    if (selectedMemberId) {
+      const seg = model.walls.find((x) => x.id === selectedMemberId)
+        || model.beams.find((x) => x.id === selectedMemberId);
+      const col = model.columns.find((x) => x.id === selectedMemberId);
+      if (seg) {
+        const a = nodeById.get(seg.i), b = nodeById.get(seg.j);
+        if (a && b) {
+          const pa = worldToCanvas(a, t), pb = worldToCanvas(b, t);
+          const hl = new fabric.Line([pa.x, pa.y, pb.x, pb.y], {
+            stroke: '#818cf8', strokeWidth: 6, opacity: 0.65, selectable: false, evented: false,
+          });
+          (hl as any).isModelOverlay = true;
+          canvas.add(hl);
+        }
+      } else if (col) {
+        const nd = nodeById.get(col.node);
+        if (nd) {
+          const p = worldToCanvas(nd, t);
+          const box = new fabric.Rect({
+            left: p.x, top: p.y, width: 18, height: 18, originX: 'center', originY: 'center',
+            angle: col.rotation || 0, fill: 'rgba(129,140,248,0.22)', stroke: '#818cf8', strokeWidth: 2,
+            selectable: false, evented: false,
+          });
+          (box as any).isModelOverlay = true;
+          canvas.add(box);
+        }
+      }
+    }
+    canvas.requestRenderAll();
+  }, [model, selectedMemberId, lines, resizeTick, cropBBox]);
 
   // 🤖 AI 인식 폴리곤 렌더링 (반투명 오버레이)
   useEffect(() => {

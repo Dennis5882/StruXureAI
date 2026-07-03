@@ -55,6 +55,15 @@ const DICT: Record<string, Record<Lang, string>> = {
   listCols:     { ko: '기둥 목록', en: 'Columns', zh: '柱清單' },
   listBeams:    { ko: '보 목록', en: 'Beams', zh: '梁清單' },
 
+  // 검토 탭 — 인라인 수정(U3)
+  editHint:     { ko: '부재를 클릭하면 캔버스에서 강조되고 값을 수정할 수 있어요.', en: 'Click a member to highlight it on canvas and edit its values.', zh: '點擊構件即可在畫布上標示並編輯數值。' },
+  edWidth:      { ko: '폭 b', en: 'Width b', zh: '寬 b' },
+  edDepth:      { ko: '깊이 h', en: 'Depth h', zh: '深 h' },
+  edRot:        { ko: '회전°', en: 'Rot°', zh: '旋轉°' },
+  edThick:      { ko: '두께 t', en: 'Thick t', zh: '厚 t' },
+  edBeamW:      { ko: '폭 w', en: 'Width w', zh: '寬 w' },
+  edDone:       { ko: '닫기', en: 'Close', zh: '關閉' },
+
   // 내보내기 탭 — 체크리스트
   ckTitle:      { ko: '전송 준비 체크리스트', en: 'Export checklist', zh: '傳送檢查清單' },
   ckFile:       { ko: '도면 로드됨', en: 'Drawing loaded', zh: '已載入圖面' },

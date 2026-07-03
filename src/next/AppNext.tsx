@@ -45,6 +45,7 @@ export const AppNext: React.FC = () => {
     const entitiesToExtract = filterEntitiesByCrop(st.dxfEntities, st.cropBBox);
     const { members, grid } = extractStructuralModel(entitiesToExtract, st.dxfLayers, st.dxfTransform, { thicknessProfile: profile, layerTypeOverrides, lineLayerIncludes });
     if (members.length === 0) { alert(n('noStruct')); return; }
+    st.clearCadLines(); // 이전 추출 부재 제거 → 재추출 시 겹침 방지 (수동 편집은 유지)
     st.addLines(members);
     const model = buildStructuralModel(members, grid, st.dxfTransform, { name: 'B1F' });
     st.setModel(model);

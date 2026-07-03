@@ -67,8 +67,9 @@ export const StepperBar: React.FC<Props> = ({ onExtract, setTab }) => {
         </div>
 
         <div className="flex items-center space-x-3">
-          {/* 다음 한 수 CTA — '도면 열기'는 좌측 이미지/CAD 버튼과 중복이라 파일 로드 후에만 노출 */}
-          {wf.next !== 'open' && (
+          {/* 다음 한 수 CTA — 실제 동작인 '구조 추출 실행'만 노출.
+              '열기'(좌측 버튼)·'검토'·'전송'(우측 탭)은 중복이라 제외 */}
+          {wf.next === 'extract' && (
             <button onClick={runCta} className="flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 shadow-md">
               <span>{ctaLabel[wf.next]}</span>
               <ArrowRight size={14} />
