@@ -45,7 +45,7 @@
 ### ⭐ 지금 다음 한 수 (범위 = 모델링+핸드오프, 해석 제외)
 > 자세한 단계는 [ROADMAP.md](./ROADMAP.md). 현재 v0.27.1: 추출(벽96%)→FloorModel(절점그래프)→Gen NX 핸드오프 **동작**.
 > UI v2(`index.next.html`) 검토 중: 5단계 스테퍼·레이어 타입 지정·LINE 확인 배너·검토 탭·하단 상태바 포함. Vercel 배포 완료(`/index.next.html`).
-- ~~**U3 검토→수정 루프**~~ ✅ **완료(v0.29.0)** — 검토 탭 부재 클릭 → 선택+캔버스 강조, 두께/단면(기둥 b/h/회전·벽 두께·보 폭) 인라인 편집→model 반영. **자유단 amber 링 캔버스 하이라이트**. store `selectedMemberId`/`updateMember`. 후속: 캔버스에서 직접 부재 클릭 선택(현재 목록→캔버스), 자유단 갭 자동 연결 제안.
+- ~~**U3 검토→수정 루프**~~ ✅ **완료(v0.29~0.30)** — 검토 탭/캔버스 **양방향** 부재 선택+강조, 두께/단면(기둥 b/h/회전·벽 두께·보 폭) 인라인 편집→model 반영, **자유단 amber 링 하이라이트**, **부재 삭제**(삭제버튼·Delete키, model+캔버스 line 동기), **부재 추가**(벽/기둥 그리기→model 편입), **자유단 자동 연결**(≤300mm 근접 자유단 병합, B1F 60→24). store `selectedMemberId`/`updateMember`/`deleteMember`/`addLineToModel`/`autoConnectFreeEnds`, member↔line `lineId` 링크.
 - (이번 세션 추가) 재로드/재추출 겹침 수정(`clearCadLines`), 캔버스 CROP 모드(도면에서 직접 범위 선택), 언어 드롭다운, CTA 정리(추출만).
 - **C1 실도면 일반성** (⚠️ B1F 외 다른 DWG 필요 — 사용자 제공): 레이어 수동 지정 기능 추가됨으로 다른 관례 도면도 대응 가능. 새 도면 제공 시 테스트 바로 가능.
 - **B1 다층**(다중 DWG→BuildingModel) + **B2 Story Data 등록** + **A4 다층 라이브 재전송**(Gen NX 재연결): 한 동(棟) 핸드오프.

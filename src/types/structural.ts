@@ -18,6 +18,7 @@ export interface SColumn {
   rotation: number;     // deg
   gridRef?: string;
   sectionName?: string; // 'C1' 등(추후)
+  lineId?: string;      // 원본 캔버스 line id (삭제 시 동기화)
 }
 
 export interface SWall {
@@ -27,6 +28,7 @@ export interface SWall {
   thicknessMeasured?: number;
   gridLine?: string;    // 'X3' 등(축 위 벽)
   singleLine?: boolean; // 단일선 벽(두께 추정)
+  lineId?: string;      // 원본 캔버스 line id (삭제 시 동기화)
 }
 
 export interface SBeam {
@@ -36,6 +38,7 @@ export interface SBeam {
   depth?: number;
   gridLine?: string;
   singleLine?: boolean;
+  lineId?: string;      // 원본 캔버스 line id (삭제 시 동기화)
 }
 
 export interface SGridAxis {

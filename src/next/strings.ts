@@ -63,6 +63,15 @@ const DICT: Record<string, Record<Lang, string>> = {
   edThick:      { ko: '두께 t', en: 'Thick t', zh: '厚 t' },
   edBeamW:      { ko: '폭 w', en: 'Width w', zh: '寬 w' },
   edDone:       { ko: '닫기', en: 'Close', zh: '關閉' },
+  edDelete:     { ko: '삭제', en: 'Delete', zh: '刪除' },
+
+  // 부재 추가 / 자유단 연결
+  addTitle:     { ko: '부재 추가', en: 'Add member', zh: '新增構件' },
+  addWall:      { ko: '벽 추가', en: 'Add wall', zh: '新增牆' },
+  addColumn:    { ko: '기둥 추가', en: 'Add column', zh: '新增柱' },
+  addHint:      { ko: '버튼 후 캔버스에 드래그하면 새 부재가 추가됩니다.', en: 'After clicking, drag on the canvas to add a new member.', zh: '點擊後於畫布拖曳即可新增構件。' },
+  autoConnect:  { ko: '자유단 자동 연결', en: 'Auto-connect free ends', zh: '自動連接自由端' },
+  autoConnectHint: { ko: '≤300mm 근접 자유단을 이웃 절점에 병합합니다.', en: 'Merges free ends within 300mm to a neighbor node.', zh: '將 ≤300mm 的自由端併入鄰近節點。' },
 
   // 내보내기 탭 — 체크리스트
   ckTitle:      { ko: '전송 준비 체크리스트', en: 'Export checklist', zh: '傳送檢查清單' },

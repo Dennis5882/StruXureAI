@@ -76,11 +76,19 @@ export const Workspace: React.FC = () => {
   const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale, isLoadingFile, loadingMessage, gridSize, cropBBox, model, selectedMemberId } = useDrawingStore();
   const { t } = useT();
 
-  // ⌨️ 단축키(Ctrl+Z)로 실행 취소 기능 연동
+  // ⌨️ 단축키: Ctrl+Z 실행취소 · Delete/Backspace 로 선택된 검토 부재 삭제
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         undoLine();
+        return;
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // 입력 필드에 포커스 중이면 무시 (인라인 편집 방해 방지)
+        const el = document.activeElement as HTMLElement | null;
+        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+        const st = useDrawingStore.getState();
+        if (st.selectedMemberId) { e.preventDefault(); st.deleteMember(st.selectedMemberId); }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -839,13 +847,21 @@ export const Workspace: React.FC = () => {
       // ⭐ 히트판정용 좌표(aCoords) 갱신 — 누락 시 fabric findTarget이 도형을 못 잡음
       currentShape.setCoords();
 
-      state.addLine({
+      const newLine = {
         id: objId,
-        source: 'MANUAL', type: state.currentType,
+        source: 'MANUAL' as const, type: state.currentType,
         shape: state.currentMode.replace('DRAW_', '').toLowerCase(),
         coordinates: [{ x: startX, y: startY }, { x: endX, y: endY }],
         thickness: 4,
-      });
+      };
+      state.addLine(newLine);
+
+      // 🧩 모델이 있고 구조 부재 타입이면 모델에 편입(부재 추가) 후 선택 모드 복귀.
+      const structural = state.currentType === 'WALL' || state.currentType === 'COLUMN' || state.currentType === 'BEAM';
+      if (state.model && structural) {
+        state.addLineToModel(newLine);
+        state.setMode('SELECT');
+      }
 
       currentShape = null;
       currentText = null;

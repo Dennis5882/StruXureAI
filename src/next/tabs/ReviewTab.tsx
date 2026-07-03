@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Pencil } from 'lucide-react';
+import { AlertTriangle, Pencil, Trash2, Plus, Link2 } from 'lucide-react';
 import { useDrawingStore } from '../../store/useDrawingStore';
 import { modelQuality } from '../workflow';
 import { useNext } from '../strings';
@@ -34,7 +34,16 @@ export const ReviewTab: React.FC = () => {
   const selectedMemberId = useDrawingStore((s) => s.selectedMemberId);
   const setSelectedMemberId = useDrawingStore((s) => s.setSelectedMemberId);
   const updateMember = useDrawingStore((s) => s.updateMember);
+  const deleteMember = useDrawingStore((s) => s.deleteMember);
+  const setType = useDrawingStore((s) => s.setType);
+  const setMode = useDrawingStore((s) => s.setMode);
+  const autoConnectFreeEnds = useDrawingStore((s) => s.autoConnectFreeEnds);
   const q = modelQuality(model);
+
+  const startAdd = (type: 'WALL' | 'COLUMN') => {
+    setType(type);
+    setMode(type === 'COLUMN' ? 'DRAW_RECT' : 'DRAW_LINE');
+  };
 
   if (!model || !q) {
     return <div className="text-xs text-zinc-600 text-center mt-12 leading-relaxed whitespace-pre-line px-4">{n('qEmpty')}</div>;
@@ -43,6 +52,14 @@ export const ReviewTab: React.FC = () => {
   const rowCls = (sel: boolean) =>
     `rounded ${sel ? 'bg-indigo-500/10 ring-1 ring-indigo-500/40' : 'bg-zinc-900/60'}`;
   const toggle = (id: string) => setSelectedMemberId(selectedMemberId === id ? null : id);
+  const delBtn = (id: string) => (
+    <button
+      onClick={(e) => { e.stopPropagation(); deleteMember(id); }}
+      className="flex items-center gap-0.5 text-[10px] text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded px-1.5 py-0.5 ml-auto"
+    >
+      <Trash2 size={11} /><span>{n('edDelete')}</span>
+    </button>
+  );
 
   return (
     <div className="p-2.5 space-y-3">
@@ -56,9 +73,19 @@ export const ReviewTab: React.FC = () => {
       </div>
 
       {q.freeEnds > 0 && (
-        <div className="flex items-start space-x-1.5 text-[10px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded px-2 py-1.5">
-          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-          <span>{n('qFreeHint')}</span>
+        <div className="space-y-1.5">
+          <div className="flex items-start space-x-1.5 text-[10px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded px-2 py-1.5">
+            <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+            <span>{n('qFreeHint')}</span>
+          </div>
+          <button
+            onClick={() => autoConnectFreeEnds()}
+            title={n('autoConnectHint')}
+            className="w-full flex items-center justify-center gap-1.5 text-[11px] font-medium px-2 py-1.5 rounded bg-amber-500/15 text-amber-200 hover:bg-amber-500/25 border border-amber-500/30"
+          >
+            <Link2 size={12} />
+            <span>{n('autoConnect')}</span>
+          </button>
         </div>
       )}
 
@@ -72,6 +99,25 @@ export const ReviewTab: React.FC = () => {
       <div className="flex items-start space-x-1.5 text-[10px] text-indigo-300/80 bg-indigo-500/10 border border-indigo-500/20 rounded px-2 py-1.5">
         <Pencil size={11} className="mt-0.5 shrink-0" />
         <span>{n('editHint')}</span>
+      </div>
+
+      {/* 부재 추가 */}
+      <div className="space-y-1">
+        <div className="flex gap-1.5">
+          <button
+            onClick={() => startAdd('WALL')}
+            className="flex-1 flex items-center justify-center gap-1 text-[11px] font-medium px-2 py-1.5 rounded bg-zinc-800 text-red-300 hover:bg-zinc-700 border border-zinc-700"
+          >
+            <Plus size={12} /><span>{n('addWall')}</span>
+          </button>
+          <button
+            onClick={() => startAdd('COLUMN')}
+            className="flex-1 flex items-center justify-center gap-1 text-[11px] font-medium px-2 py-1.5 rounded bg-zinc-800 text-sky-300 hover:bg-zinc-700 border border-zinc-700"
+          >
+            <Plus size={12} /><span>{n('addColumn')}</span>
+          </button>
+        </div>
+        <p className="text-[9px] text-zinc-600 px-0.5">{n('addHint')}</p>
       </div>
 
       {/* 기둥 목록 */}
@@ -92,6 +138,7 @@ export const ReviewTab: React.FC = () => {
                       <NumField label={n('edWidth')} value={c.width} onChange={(v) => updateMember(c.id, { width: v })} />
                       <NumField label={n('edDepth')} value={c.depth} onChange={(v) => updateMember(c.id, { depth: v })} />
                       <NumField label={n('edRot')} value={c.rotation} onChange={(v) => updateMember(c.id, { rotation: v })} />
+                      {delBtn(c.id)}
                     </div>
                   )}
                 </div>
@@ -117,6 +164,7 @@ export const ReviewTab: React.FC = () => {
                   {sel && (
                     <div className="flex flex-wrap gap-2 px-2 pb-2 pt-0.5">
                       <NumField label={n('edThick')} value={w.thickness} onChange={(v) => updateMember(w.id, { thickness: v })} />
+                      {delBtn(w.id)}
                     </div>
                   )}
                 </div>
@@ -142,6 +190,7 @@ export const ReviewTab: React.FC = () => {
                   {sel && (
                     <div className="flex flex-wrap gap-2 px-2 pb-2 pt-0.5">
                       <NumField label={n('edBeamW')} value={b.width} onChange={(v) => updateMember(b.id, { width: v })} />
+                      {delBtn(b.id)}
                     </div>
                   )}
                 </div>

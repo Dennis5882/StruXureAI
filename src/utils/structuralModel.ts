@@ -54,6 +54,7 @@ export const buildStructuralModel = (
         depth: Math.round(m.properties?.depth_mm ?? 0),
         rotation: Math.round(m.properties?.rotation_deg ?? 0),
         gridRef: ref,
+        lineId: m.id,
       });
     } else if (m.type === 'WALL' && m.shape === 'line') {
       walls.push({
@@ -62,12 +63,14 @@ export const buildStructuralModel = (
         thicknessMeasured: m.properties?.thickness_measured_mm,
         gridLine: m.properties?.gridLine,
         singleLine: !!m.properties?.singleLine,
+        lineId: m.id,
       });
     } else if (m.type === 'BEAM' && m.shape === 'line') {
       beams.push({
         id: `B${++bId}`, i: nodeId(a), j: nodeId(b),
         width: Math.round(m.properties?.width_mm ?? 300),
         singleLine: !!m.properties?.singleLine,
+        lineId: m.id,
       });
     }
   }
@@ -96,4 +99,93 @@ export const nodeDegrees = (m: FloorModel): Map<string, number> => {
   for (const w of m.walls) { inc(w.i); inc(w.j); }
   for (const b of m.beams) { inc(b.i); inc(b.j); }
   return deg;
+};
+
+const r1 = (n: number) => Math.round(n * 10) / 10;
+const nextId = (arr: { id: string }[], pre: string): string => {
+  let mx = 0;
+  for (const it of arr) { const m = new RegExp(`^${pre}(\\d+)$`).exec(it.id); if (m) mx = Math.max(mx, +m[1]); }
+  return `${pre}${mx + 1}`;
+};
+
+// 수동으로 그린 캔버스 line(px)을 모델(월드 mm)에 부재로 편입한다.
+// 절점은 기존 절점과 1mm 이내면 병합. lineId로 캔버스 line과 연결(삭제 동기).
+export const incorporateLine = (model: FloorModel, line: StructureLineData, t: DxfTransform): FloorModel => {
+  if (!line.coordinates || line.coordinates.length < 2) return model;
+  const a = line.coordinates[0], b = line.coordinates[1];
+  const nodes = model.nodes.map((n) => ({ ...n }));
+  let maxN = 0;
+  for (const n of nodes) { const m = /^n(\d+)$/.exec(n.id); if (m) maxN = Math.max(maxN, +m[1]); }
+  const findOrAdd = (p: Point2D): string => {
+    const w = canvasToWorld(p, t);
+    for (const n of nodes) { if (Math.hypot(n.x - w.x, n.y - w.y) < 1) return n.id; }
+    const id = `n${++maxN}`; nodes.push({ id, x: r1(w.x), y: r1(w.y) }); return id;
+  };
+  const out: FloorModel = { ...model, nodes };
+  if (line.type === 'COLUMN' && line.shape === 'rect') {
+    const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const node = findOrAdd(center);
+    const wA = canvasToWorld(a, t), wB = canvasToWorld(b, t);
+    out.columns = [...model.columns, {
+      id: nextId(model.columns, 'C'), node,
+      width: Math.round(Math.abs(wB.x - wA.x)) || 400,
+      depth: Math.round(Math.abs(wA.y - wB.y)) || 400,
+      rotation: 0, lineId: line.id,
+    }];
+  } else if (line.type === 'BEAM') {
+    out.beams = [...model.beams, {
+      id: nextId(model.beams, 'B'), i: findOrAdd(a), j: findOrAdd(b),
+      width: Math.round(line.properties?.width_mm ?? 300), lineId: line.id,
+    }];
+  } else { // WALL (기본)
+    out.walls = [...model.walls, {
+      id: nextId(model.walls, 'W'), i: findOrAdd(a), j: findOrAdd(b),
+      thickness: Math.round(line.properties?.thickness_mm ?? 200), lineId: line.id,
+    }];
+  }
+  return out;
+};
+
+// 자유단(벽/보 차수 ≤1 끝점)을 threshold(mm) 이내의 가장 가까운 다른 절점에 병합해 연결.
+// 같은 부재의 반대편 끝(형제 절점)은 제외 → 부재가 붕괴(길이 0)되지 않게 한다.
+export const autoConnectFreeEnds = (model: FloorModel, thresh = 300): { model: FloorModel; connected: number } => {
+  const nodeById = new Map(model.nodes.map((n) => [n.id, n]));
+  const degWB = new Map<string, number>();
+  const inc = (id: string) => degWB.set(id, (degWB.get(id) || 0) + 1);
+  model.walls.forEach((w) => { inc(w.i); inc(w.j); });
+  model.beams.forEach((b) => { inc(b.i); inc(b.j); });
+  // 인접(형제) 절점 맵
+  const nbr = new Map<string, Set<string>>();
+  const addN = (x: string, y: string) => { if (!nbr.has(x)) nbr.set(x, new Set()); nbr.get(x)!.add(y); };
+  model.walls.forEach((w) => { addN(w.i, w.j); addN(w.j, w.i); });
+  model.beams.forEach((b) => { addN(b.i, b.j); addN(b.j, b.i); });
+
+  const freeIds = [...degWB.entries()].filter(([, d]) => d <= 1).map(([id]) => id);
+  const remap = new Map<string, string>();
+  const resolve = (id: string): string => { let x = id; while (remap.has(x)) x = remap.get(x)!; return x; };
+  let connected = 0;
+  for (const fid of freeIds) {
+    if (remap.has(fid)) continue;
+    const f = nodeById.get(fid); if (!f) continue;
+    const siblings = nbr.get(fid) || new Set();
+    let best: string | null = null, bestD = thresh;
+    for (const n of model.nodes) {
+      if (n.id === fid || siblings.has(n.id)) continue;
+      if (resolve(n.id) === resolve(fid)) continue;
+      const d = Math.hypot(n.x - f.x, n.y - f.y);
+      if (d <= bestD) { bestD = d; best = n.id; }
+    }
+    if (best) { remap.set(fid, best); connected++; }
+  }
+  if (connected === 0) return { model, connected: 0 };
+
+  const walls = model.walls.map((w) => ({ ...w, i: resolve(w.i), j: resolve(w.j) })).filter((w) => w.i !== w.j);
+  const beams = model.beams.map((b) => ({ ...b, i: resolve(b.i), j: resolve(b.j) })).filter((b) => b.i !== b.j);
+  const columns = model.columns.map((c) => ({ ...c, node: resolve(c.node) }));
+  const used = new Set<string>();
+  walls.forEach((w) => { used.add(w.i); used.add(w.j); });
+  beams.forEach((b) => { used.add(b.i); used.add(b.j); });
+  columns.forEach((c) => used.add(c.node));
+  const nodes = model.nodes.filter((n) => used.has(n.id));
+  return { model: { ...model, nodes, walls, beams, columns }, connected };
 };

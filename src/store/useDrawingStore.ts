@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { DrawingMode, StructureType, StructureLineData, Point2D } from '../types/drawing';
 import { FloorModel, SColumn, SWall, SBeam } from '../types/structural';
+import { incorporateLine, autoConnectFreeEnds as autoConnectFreeEndsPure } from '../utils/structuralModel';
 
 // 검토→수정: 선택된 모델 부재(C1/W1/B1)에 적용할 부분 패치
 export type MemberPatch = Partial<SColumn> & Partial<SWall> & Partial<SBeam>;
@@ -86,6 +87,9 @@ interface DrawingState {
   setModel: (model: FloorModel | null) => void;
   setSelectedMemberId: (id: string | null) => void;
   updateMember: (id: string, patch: MemberPatch) => void; // 모델 부재 두께/단면 등 인라인 수정
+  deleteMember: (id: string) => void; // 모델 부재 삭제 + 원본 캔버스 line 동기 제거
+  addLineToModel: (line: StructureLineData) => void; // 수동 그린 부재를 모델에 편입
+  autoConnectFreeEnds: (thresh?: number) => void; // 근접 자유단 자동 연결
   setLoadingFile: (loading: boolean, message?: string) => void;
 
   addLine: (line: Omit<StructureLineData, 'id'> | StructureLineData) => void;
@@ -170,6 +174,34 @@ export const useDrawingStore = create<DrawingState>((set) => ({
         beams: apply(m.beams),
       },
     };
+  }),
+  deleteMember: (id) => set((state) => {
+    if (!state.model) return state;
+    const m = state.model;
+    const hit = [...m.columns, ...m.walls, ...m.beams].find((it) => it.id === id);
+    const lineId = (hit as any)?.lineId as string | undefined;
+    return {
+      model: {
+        ...m,
+        columns: m.columns.filter((c) => c.id !== id),
+        walls: m.walls.filter((w) => w.id !== id),
+        beams: m.beams.filter((b) => b.id !== id),
+      },
+      // 원본 캔버스 line 도 함께 제거 (있으면)
+      lines: lineId ? state.lines.filter((l) => l.id !== lineId) : state.lines,
+      selectedMemberId: state.selectedMemberId === id ? null : state.selectedMemberId,
+    };
+  }),
+  addLineToModel: (line) => set((state) => {
+    if (!state.model || !state.dxfTransform) return state;
+    const model = incorporateLine(state.model, line, state.dxfTransform);
+    const added = [...model.columns, ...model.walls, ...model.beams].find((it: any) => it.lineId === line.id);
+    return { model, selectedMemberId: added ? added.id : state.selectedMemberId };
+  }),
+  autoConnectFreeEnds: (thresh = 300) => set((state) => {
+    if (!state.model) return state;
+    const { model, connected } = autoConnectFreeEndsPure(state.model, thresh);
+    return connected > 0 ? { model, selectedMemberId: null } : state;
   }),
   setLoadingFile: (isLoadingFile, loadingMessage = '') => set({ isLoadingFile, loadingMessage }),
 
