@@ -575,6 +575,32 @@ export const Workspace: React.FC = () => {
           }
         }
 
+        // 1-b) 모델 부재(CAD 추출) 히트 → 검토 선택. (수동 선은 아래 정점편집으로 자연 분리)
+        const mt = state.dxfTransform;
+        if (state.model && mt) {
+          const nodeById = new Map(state.model.nodes.map((nd) => [nd.id, nd]));
+          // 기둥: 풋프린트(+tol) 안이면 선택
+          let colId: string | null = null, colBest = Infinity;
+          for (const c of state.model.columns) {
+            const nd = nodeById.get(c.node); if (!nd) continue;
+            const pc = worldToCanvas(nd, mt);
+            const dd = Math.hypot(p.x - pc.x, p.y - pc.y);
+            const half = (Math.max(c.width, c.depth, 200) / 2) * mt.scale;
+            if (dd <= half + tol && dd < colBest) { colBest = dd; colId = c.id; }
+          }
+          if (colId) { state.setSelectedMemberId(colId); clearVHandles(); canvas.discardActiveObject(); canvas.requestRenderAll(); return; }
+          // 벽/보: 선분 근처(두께 절반 + tol)면 선택
+          let segId: string | null = null, segBest = Infinity;
+          const testSeg = (id: string, i: string, j: string, extra: number) => {
+            const a = nodeById.get(i), b = nodeById.get(j); if (!a || !b) return;
+            const dd = distToSegment(p, worldToCanvas(a, mt), worldToCanvas(b, mt));
+            if (dd <= tol + extra && dd < segBest) { segBest = dd; segId = id; }
+          };
+          for (const w of state.model.walls) testSeg(w.id, w.i, w.j, (w.thickness / 2) * mt.scale);
+          for (const bm of state.model.beams) testSeg(bm.id, bm.i, bm.j, (bm.width / 2) * mt.scale);
+          if (segId) { state.setSelectedMemberId(segId); clearVHandles(); canvas.discardActiveObject(); canvas.requestRenderAll(); return; }
+        }
+
         // 2) fabric이 도형(선 아님)을 잡았으면 네이티브 처리에 위임
         const tgt = opt.target as any;
         if (tgt && !tgt.isGrid && !tgt.isVertexHandle && tgt.type !== 'line') { clearVHandles(); return; }
@@ -592,7 +618,9 @@ export const Workspace: React.FC = () => {
           const d = state.lines.find((l) => l.id === bestId)!;
           lineMove = { id: bestId, sx: p.x, sy: p.y, coords: d.coordinates.map((c) => ({ ...c })) };
         } else {
-          clearVHandles(); canvas.discardActiveObject(); canvas.requestRenderAll();
+          clearVHandles(); canvas.discardActiveObject();
+          if (state.selectedMemberId) state.setSelectedMemberId(null); // 빈 곳 클릭 → 검토 선택 해제
+          canvas.requestRenderAll();
         }
         return;
       }

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import { Workspace } from '../components/Workspace';
 import { useDrawingStore } from '../store/useDrawingStore';
@@ -23,6 +23,12 @@ export const AppNext: React.FC = () => {
   // crop 범위는 store가 단일 출처 — 캔버스 CROP 모드와 미니맵이 공유, 파일 로드 시 자동 초기화.
   const cropBBox = useDrawingStore((s) => s.cropBBox);
   const setCropBBox = useDrawingStore((s) => s.setCropBBox);
+
+  // 캔버스에서 부재를 클릭해 선택하면(selectedMemberId 설정) 검토 탭을 자동으로 연다.
+  const selectedMemberId = useDrawingStore((s) => s.selectedMemberId);
+  useEffect(() => {
+    if (selectedMemberId) setTab('review');
+  }, [selectedMemberId]);
 
   const setLayerOverride = useCallback((layerName: string, type: StructureType | 'EXCLUDE' | 'AUTO') => {
     setLayerTypeOverrides((prev) => {
