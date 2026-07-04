@@ -50,6 +50,7 @@ export interface SGridAxis {
 
 export interface FloorModel {
   units: 'mm';
+  id?: string;          // 다층 관리용 안정 식별자 (building.floors)
   name: string;         // 'B1F' 등
   elevation?: number;   // 바닥 레벨(mm)
   height?: number;      // 층고(mm)

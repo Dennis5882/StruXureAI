@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDrawingStore } from '../store/useDrawingStore';
-import { buildMidasRequests, toPythonScript, sendMidas, MIDAS_BASE_DEFAULT, MidasBuild, SendLog } from '../utils/midasExport';
+import { buildMidasRequests, buildMidasRequestsBuilding, toPythonScript, sendMidas, MIDAS_BASE_DEFAULT, MidasBuild, SendLog } from '../utils/midasExport';
 import { useT } from '../i18n';
 import { Send, Download, FileCode, Server, ChevronDown, ChevronRight } from 'lucide-react';
 
@@ -23,8 +23,12 @@ export const MidasExport: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string[]>([]);
 
+  const floorCount = useDrawingStore((s) => s.floors.length);
+
   const build = (): MidasBuild | null => {
     const st = useDrawingStore.getState();
+    // 저장된 층(Building)이 있으면 다층 전송, 없으면 현재 단일 모델 N층 복제
+    if (st.floors.length > 0) return buildMidasRequestsBuilding(st.floors, { concGrade: grade });
     const model = st.model;
     if (!model || !model.nodes.length) { alert(t('mx.alNoMembers')); return null; }
     return buildMidasRequests(model, { stories, storyHeightMm: storyH, concGrade: grade });
@@ -56,14 +60,19 @@ export const MidasExport: React.FC = () => {
       </button>
       {open && (
         <div className="p-2.5 space-y-2 bg-zinc-900/40">
+          {floorCount > 0 && (
+            <div className="text-[10px] text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 rounded px-2 py-1">
+              {floorCount}개 층(Building) 전송 — 각 층 레벨/층고 사용
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-2">
             <label className="text-[11px] text-zinc-400">{t('mx.stories')}
-              <input type="number" min={1} value={stories} onChange={(e) => setStories(Math.max(1, Math.floor(+e.target.value || 1)))}
-                className="w-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-zinc-200 text-[11px]" />
+              <input type="number" min={1} value={stories} disabled={floorCount > 0} onChange={(e) => setStories(Math.max(1, Math.floor(+e.target.value || 1)))}
+                className="w-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-zinc-200 text-[11px] disabled:opacity-40" />
             </label>
             <label className="text-[11px] text-zinc-400">{t('mx.storyH')}
-              <input type="number" value={storyH} onChange={(e) => setStoryH(+e.target.value || 0)}
-                className="w-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-zinc-200 text-[11px]" />
+              <input type="number" value={storyH} disabled={floorCount > 0} onChange={(e) => setStoryH(+e.target.value || 0)}
+                className="w-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-zinc-200 text-[11px] disabled:opacity-40" />
             </label>
             <label className="text-[11px] text-zinc-400">{t('mx.grade')}
               <input value={grade} onChange={(e) => setGrade(e.target.value)}

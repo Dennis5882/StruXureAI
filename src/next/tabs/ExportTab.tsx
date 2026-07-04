@@ -5,6 +5,7 @@ import { MidasExport } from '../../components/MidasExport';
 import { hasCadStructure } from '../workflow';
 import { useNext } from '../strings';
 import { buildDxfFromModel } from '../../utils/dxfExport';
+import { FloorsPanel } from '../FloorsPanel';
 
 const Row: React.FC<{ ok: boolean; label: string }> = ({ ok, label }) => (
   <div className="flex items-center space-x-2 text-[11px]">
@@ -43,6 +44,9 @@ export const ExportTab: React.FC = () => {
         <Row ok={hasModel} label={n('ckModel')} />
         <p className="text-[10px] text-zinc-600 pt-1">{n('ckReady')}</p>
       </div>
+
+      {/* 다층 구성 (Building) */}
+      <FloorsPanel />
 
       {/* DXF 내보내기 (편집 반영된 model 소비) */}
       <div className="p-2.5 border-b border-zinc-800">

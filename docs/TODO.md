@@ -48,7 +48,8 @@
 - ~~**U3 검토→수정 루프**~~ ✅ **완료(v0.29~0.30)** — 검토 탭/캔버스 **양방향** 부재 선택+강조, 두께/단면(기둥 b/h/회전·벽 두께·보 폭) 인라인 편집→model 반영, **자유단 amber 링 하이라이트**, **부재 삭제**(삭제버튼·Delete키, model+캔버스 line 동기), **부재 추가**(벽/기둥 그리기→model 편입), **자유단 자동 연결**(≤300mm 근접 자유단 병합, B1F 60→24). store `selectedMemberId`/`updateMember`/`deleteMember`/`addLineToModel`/`autoConnectFreeEnds`, member↔line `lineId` 링크.
 - (이번 세션 추가) 재로드/재추출 겹침 수정(`clearCadLines`), 캔버스 CROP 모드(도면에서 직접 범위 선택), 언어 드롭다운, CTA 정리(추출만).
 - **C1 실도면 일반성** (⚠️ B1F 외 다른 DWG 필요 — 사용자 제공): 레이어 수동 지정 기능 추가됨으로 다른 관례 도면도 대응 가능. 새 도면 제공 시 테스트 바로 가능.
-- **B1 다층**(다중 DWG→BuildingModel) + **B2 Story Data 등록** + **A4 다층 라이브 재전송**(Gen NX 재연결): 한 동(棟) 핸드오프.
+- **B1 다층**(다중 DWG→BuildingModel): 🟡 **Phase1~2 완료(v0.31.0)** — 스냅샷 방식 층 수집(`floors[]`, 저장/레벨·층고·층명 편집/삭제, FloorsPanel), **다층 MIDAS 전송**(`buildMidasRequestsBuilding`, 각 층 elevation~+height 배치, 절점 월드(x,y,z) 병합→경계층 절점 공유=기둥 연속). B1F×2 검증: z{0,3000,6000} 각 145절점(경계 병합), 기둥100·벽142. **남음**: 층별 다른 평면 로드(현재는 같은 DWG 재추출로 층 저장), Phase3 빌딩 DXF(3D).
+- **B2 Story Data(STRY) 등록** + **A4 다층 라이브 재전송**(Gen NX 재연결): 한 동(棟) 핸드오프 — MIDAS 스토리 메타 등록은 미구현(기하 조립만 완료).
 - ~~핸드오프 다듬기: **dxfExport도 model 소비**~~ ✅ **완료(v0.30.1)** — `buildDxfFromModel(model)`(월드 mm, 벽/보 축선·기둥 회전사각·그리드 축선). 내보내기 탭에 DXF 버튼 추가, Toolbar도 model 우선. B1F 검증: LINE 285=벽71+기둥49×4+그리드18, 편집(삭제/두께) 반영.
 - ❌ 범위 밖: 하중/지진/풍·하중조합·해석실행 (Gen NX에서).
 

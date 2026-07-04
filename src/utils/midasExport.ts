@@ -15,6 +15,39 @@ export interface MidasBuild {
 
 export const MIDAS_BASE_DEFAULT = 'https://moa-engineers.midasit.com:443/gen';
 
+type MNode = { id: number; x: number; y: number; z: number };
+type MElem = { id: number; TYPE: string; MATL: number; SECT: number; NODE: number[]; ANGLE: number; STYPE: number };
+type MSect = { id: number; name: string; h: number; w: number };
+type MThik = { id: number; name: string; t: number };
+interface MidasOpts { storyHeightMm?: number; stories?: number; unitDist?: string; unitForce?: string; concGrade?: string }
+
+// nodes/elems/sects/thiks → MIDAS API 요청 시퀀스 (단일층·다층 공용 조립부).
+const assembleRequests = (nodes: MNode[], elems: MElem[], sects: MSect[], thiks: MThik[], opts?: MidasOpts): MidasRequest[] => {
+  const grade = opts?.concGrade ?? 'C280'; // 대만 RC 기본
+  const requests: MidasRequest[] = [];
+  requests.push({ method: 'POST', command: '/doc/new', body: {} });
+  requests.push({ method: 'PUT', command: '/db/unit', body: { Assign: { '1': { FORCE: opts?.unitForce ?? 'N', DIST: opts?.unitDist ?? 'MM', HEAT: 'KJ', TEMPER: 'C' } } } });
+  requests.push({ method: 'PUT', command: '/db/matl', body: { Assign: { '1': { TYPE: 'CONC', NAME: grade, DAMP_RAT: 0.05, PARAM: [{ P_TYPE: 1, STANDARD: 'CNS560(RC)', DB: grade }] } } } });
+  if (sects.length) {
+    const a: any = {};
+    for (const s of sects) a[s.id] = { SECTTYPE: 'DBUSER', SECT_NAME: s.name, SECT_BEFORE: { SHAPE: 'SB', DATATYPE: 2, SECT_I: { vSIZE: [s.h, s.w, 0, 0, 0, 0, 0] }, USE_SHEAR_DEFORM: true, USE_WARPING_EFFECT: false } };
+    requests.push({ method: 'PUT', command: '/db/sect', body: { Assign: a } });
+  }
+  if (thiks.length) {
+    const a: any = {};
+    for (const th of thiks) a[th.id] = { NAME: th.name, TYPE: 'VALUE', bINOUT: false, T_IN: th.t, T_OUT: 0, O_VALUE: 0 };
+    requests.push({ method: 'PUT', command: '/db/thik', body: { Assign: a } });
+  }
+  { const a: any = {}; for (const n of nodes) a[n.id] = { X: n.x, Y: n.y, Z: n.z }; requests.push({ method: 'PUT', command: '/db/node', body: { Assign: a } }); }
+  { const a: any = {}; for (const e of elems) { const { id, ...rest } = e; a[id] = rest; } requests.push({ method: 'PUT', command: '/db/elem', body: { Assign: a } }); }
+  { // 최하단(base) 절점 고정 — 노드ID로 키잉, CONSTRAINT 7자리(베이스='1111110')
+    const minZ = nodes.reduce((m, n) => Math.min(m, n.z), Infinity);
+    const base = nodes.filter((n) => Math.abs(n.z - minZ) < 1);
+    if (base.length) { const a: any = {}; base.forEach((n, k) => { a[n.id] = { ITEMS: [{ ID: k + 1, CONSTRAINT: '1111110', GROUP_NAME: '' }] }; }); requests.push({ method: 'PUT', command: '/db/cons', body: { Assign: a } }); }
+  }
+  return requests;
+};
+
 /**
  * 정식 구조모델(FloorModel) → MIDAS API 요청 시퀀스. 모델의 절점 그래프를 그대로 사용하므로
  * 접합부 절점 공유가 MIDAS 절점 공유로 직결된다(단일 진실 소스).
@@ -58,8 +91,7 @@ export const buildMidasRequests = (
     const id = thiks.length + 1; tmap.set(k, id); thiks.push({ id, name: `W${k}`, t: k }); return id;
   };
 
-  type Elem = { id: number; TYPE: string; MATL: number; SECT: number; NODE: number[]; ANGLE: number; STYPE: number };
-  const elems: Elem[] = [];
+  const elems: MElem[] = [];
 
   for (const c of model.columns) {
     const sid = sectId(c.depth, c.width, 'C');
@@ -78,31 +110,60 @@ export const buildMidasRequests = (
   }
   const columns = model.columns.length, walls = model.walls.length, beams = model.beams.length;
 
-  // ── 요청 시퀀스 (모든 /db/* 는 PUT, /doc/* 는 POST) ──
-  const grade = opts?.concGrade ?? 'C280'; // 대만 RC 기본
-  const requests: MidasRequest[] = [];
-  requests.push({ method: 'POST', command: '/doc/new', body: {} });
-  requests.push({ method: 'PUT', command: '/db/unit', body: { Assign: { '1': { FORCE: opts?.unitForce ?? 'N', DIST: opts?.unitDist ?? 'MM', HEAT: 'KJ', TEMPER: 'C' } } } });
-  requests.push({ method: 'PUT', command: '/db/matl', body: { Assign: { '1': { TYPE: 'CONC', NAME: grade, DAMP_RAT: 0.05, PARAM: [{ P_TYPE: 1, STANDARD: 'CNS560(RC)', DB: grade }] } } } });
-  if (sects.length) {
-    const a: any = {};
-    for (const s of sects) a[s.id] = { SECTTYPE: 'DBUSER', SECT_NAME: s.name, SECT_BEFORE: { SHAPE: 'SB', DATATYPE: 2, SECT_I: { vSIZE: [s.h, s.w, 0, 0, 0, 0, 0] }, USE_SHEAR_DEFORM: true, USE_WARPING_EFFECT: false } };
-    requests.push({ method: 'PUT', command: '/db/sect', body: { Assign: a } });
-  }
-  if (thiks.length) {
-    const a: any = {};
-    for (const th of thiks) a[th.id] = { NAME: th.name, TYPE: 'VALUE', bINOUT: false, T_IN: th.t, T_OUT: 0, O_VALUE: 0 };
-    requests.push({ method: 'PUT', command: '/db/thik', body: { Assign: a } });
-  }
-  { const a: any = {}; for (const n of nodes) a[n.id] = { X: n.x, Y: n.y, Z: n.z }; requests.push({ method: 'PUT', command: '/db/node', body: { Assign: a } }); }
-  { const a: any = {}; for (const e of elems) { const { id, ...rest } = e; a[id] = rest; } requests.push({ method: 'PUT', command: '/db/elem', body: { Assign: a } }); }
-  { // 하단(base, z=0) 절점 고정 — 노드ID로 키잉, CONSTRAINT 7자리(베이스='1111110')
-    const base = nodes.filter((n) => Math.abs(n.z) < 1);
-    if (base.length) { const a: any = {}; base.forEach((n, k) => { a[n.id] = { ITEMS: [{ ID: k + 1, CONSTRAINT: '1111110', GROUP_NAME: '' }] }; }); requests.push({ method: 'PUT', command: '/db/cons', body: { Assign: a } }); }
-  }
-  // 주: /doc/save 는 자동 호출하지 않음 — 새 문서 저장은 Gen NX에서 "다른 이름으로 저장" 대화상자를
-  //     띄워 API를 블록하므로(Story 에이전트도 빌드시 저장 안 함), 모델 생성까지만 수행한다.
+  const requests = assembleRequests(nodes, elems, sects, thiks, opts);
+  return { requests, summary: { nodes: nodes.length, columns, walls, beams, sections: sects.length, thiks: thiks.length } };
+};
 
+/**
+ * 다층(Building) → MIDAS API 시퀀스. 각 층(FloorModel)을 자신의 elevation~elevation+height 에 배치.
+ * MIDAS 절점은 월드 (x,y,z) 반올림 키로 병합 → 아래층 상단과 위층 하단이 같은 (x,y)면 절점 공유(기둥 연속).
+ * - 기둥: 층 base→top 수직. 벽: base~top PLATE. 보: 층 base 레벨 수평.
+ */
+export const buildMidasRequestsBuilding = (floors: FloorModel[], opts?: MidasOpts): MidasBuild => {
+  const f4 = (v: number) => +v.toFixed(4);
+  const nodes: MNode[] = [];
+  const nmap = new Map<string, number>();
+  const nodeAt = (x: number, y: number, z: number): number => {
+    const key = `${Math.round(x)},${Math.round(y)},${Math.round(z)}`;
+    const hit = nmap.get(key); if (hit) return hit;
+    const id = nodes.length + 1; nmap.set(key, id);
+    nodes.push({ id, x: f4(x), y: f4(y), z: f4(z) }); return id;
+  };
+  const sects: MSect[] = []; const smap = new Map<string, number>();
+  const sectId = (h: number, w: number, prefix: string): number => {
+    const name = `${prefix}_${Math.round(h)}x${Math.round(w)}`;
+    const hit = smap.get(name); if (hit) return hit;
+    const id = sects.length + 1; smap.set(name, id); sects.push({ id, name, h, w }); return id;
+  };
+  const thiks: MThik[] = []; const tmap = new Map<number, number>();
+  const thikId = (th: number): number => {
+    const k = Math.round(th); const hit = tmap.get(k); if (hit) return hit;
+    const id = thiks.length + 1; tmap.set(k, id); thiks.push({ id, name: `W${k}`, t: k }); return id;
+  };
+
+  const elems: MElem[] = [];
+  let columns = 0, walls = 0, beams = 0;
+  for (const f of floors) {
+    const base = f.elevation ?? 0, top = base + (f.height ?? 3000);
+    const p = new Map(f.nodes.map((n) => [n.id, n]));
+    for (const c of f.columns) {
+      const nd = p.get(c.node); if (!nd) continue;
+      const sid = sectId(c.depth, c.width, 'C'); columns++;
+      elems.push({ id: elems.length + 1, TYPE: 'BEAM', MATL: 1, SECT: sid, NODE: [nodeAt(nd.x, nd.y, base), nodeAt(nd.x, nd.y, top)], ANGLE: Math.round(c.rotation || 0), STYPE: 0 });
+    }
+    for (const w of f.walls) {
+      const a = p.get(w.i), b = p.get(w.j); if (!a || !b) continue;
+      const tid = thikId(w.thickness); walls++;
+      elems.push({ id: elems.length + 1, TYPE: 'PLATE', MATL: 1, SECT: tid, NODE: [nodeAt(a.x, a.y, top), nodeAt(b.x, b.y, top), nodeAt(b.x, b.y, base), nodeAt(a.x, a.y, base)], ANGLE: 0, STYPE: 1 });
+    }
+    for (const bm of f.beams) {
+      const a = p.get(bm.i), b = p.get(bm.j); if (!a || !b) continue;
+      const sid = sectId(bm.width * 2, bm.width, 'B'); beams++;
+      elems.push({ id: elems.length + 1, TYPE: 'BEAM', MATL: 1, SECT: sid, NODE: [nodeAt(a.x, a.y, base), nodeAt(b.x, b.y, base)], ANGLE: 0, STYPE: 0 });
+    }
+  }
+
+  const requests = assembleRequests(nodes, elems, sects, thiks, opts);
   return { requests, summary: { nodes: nodes.length, columns, walls, beams, sections: sects.length, thiks: thiks.length } };
 };
 

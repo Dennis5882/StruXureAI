@@ -57,8 +57,9 @@ interface DrawingState {
   isSidebarOpen: boolean;
   isHelpOpen: boolean;
   lang: 'ko' | 'en' | 'zh';
-  model: FloorModel | null; // 정식 구조모델(월드 mm, 절점-부재 그래프)
+  model: FloorModel | null; // 정식 구조모델(월드 mm, 절점-부재 그래프) — 현재 작업 층
   selectedMemberId: string | null; // 검토 탭에서 선택된 부재(C1/W1/B1) — 캔버스 강조
+  floors: FloorModel[]; // 다층(BuildingModel) — 저장된 층 스냅샷들
 
   // ⏳ 파일 로딩(DWG 변환 등) 상태
   isLoadingFile: boolean;
@@ -90,6 +91,9 @@ interface DrawingState {
   deleteMember: (id: string) => void; // 모델 부재 삭제 + 원본 캔버스 line 동기 제거
   addLineToModel: (line: StructureLineData) => void; // 수동 그린 부재를 모델에 편입
   autoConnectFreeEnds: (thresh?: number) => void; // 근접 자유단 자동 연결
+  saveCurrentAsFloor: () => void; // 현재 model을 building 층으로 스냅샷 저장
+  updateFloor: (id: string, patch: Partial<Pick<FloorModel, 'name' | 'elevation' | 'height'>>) => void;
+  removeFloor: (id: string) => void;
   setLoadingFile: (loading: boolean, message?: string) => void;
 
   addLine: (line: Omit<StructureLineData, 'id'> | StructureLineData) => void;
@@ -132,6 +136,7 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   lang: 'ko',
   model: null,
   selectedMemberId: null,
+  floors: [],
   isLoadingFile: false,
   loadingMessage: '',
 
@@ -203,6 +208,24 @@ export const useDrawingStore = create<DrawingState>((set) => ({
     const { model, connected } = autoConnectFreeEndsPure(state.model, thresh);
     return connected > 0 ? { model, selectedMemberId: null } : state;
   }),
+  saveCurrentAsFloor: () => set((state) => {
+    if (!state.model) return state;
+    const idx = state.floors.length;
+    // 다음 층 레벨 = 기존 층들의 최고 상단(elevation+height)
+    const prevTop = state.floors.reduce((z, f) => Math.max(z, (f.elevation ?? 0) + (f.height ?? 3000)), 0);
+    const floor: FloorModel = {
+      ...state.model,
+      id: `fl_${Date.now()}_${idx}`,
+      name: `${idx + 1}F`,
+      elevation: prevTop,
+      height: 3000,
+    };
+    return { floors: [...state.floors, floor] };
+  }),
+  updateFloor: (id, patch) => set((state) => ({
+    floors: state.floors.map((f) => (f.id === id ? { ...f, ...patch } : f)),
+  })),
+  removeFloor: (id) => set((state) => ({ floors: state.floors.filter((f) => f.id !== id) })),
   setLoadingFile: (isLoadingFile, loadingMessage = '') => set({ isLoadingFile, loadingMessage }),
 
   addLine: (line) => set((state) => {
