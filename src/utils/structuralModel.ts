@@ -146,20 +146,21 @@ export const incorporateLine = (model: FloorModel, line: StructureLineData, t: D
   return out;
 };
 
-// 자유단(벽/보 차수 ≤1 끝점)을 threshold(mm) 이내의 가장 가까운 다른 절점에 병합해 연결.
-// 같은 부재의 반대편 끝(형제 절점)은 제외 → 부재가 붕괴(길이 0)되지 않게 한다.
+// 자유단(벽/보 차수 ≤1 끝점) 연결. 2단계:
+//  Pass 1) 근접 절점(≤thresh)에 병합 — 형제 절점 제외로 부재 붕괴 방지.
+//  Pass 2) 남은 자유단이 다른 벽의 선분 내부(끝점 아님)에 닿으면 그 벽을 분할해 T자 접합.
 export const autoConnectFreeEnds = (model: FloorModel, thresh = 300): { model: FloorModel; connected: number } => {
   const nodeById = new Map(model.nodes.map((n) => [n.id, n]));
   const degWB = new Map<string, number>();
   const inc = (id: string) => degWB.set(id, (degWB.get(id) || 0) + 1);
   model.walls.forEach((w) => { inc(w.i); inc(w.j); });
   model.beams.forEach((b) => { inc(b.i); inc(b.j); });
-  // 인접(형제) 절점 맵
   const nbr = new Map<string, Set<string>>();
   const addN = (x: string, y: string) => { if (!nbr.has(x)) nbr.set(x, new Set()); nbr.get(x)!.add(y); };
   model.walls.forEach((w) => { addN(w.i, w.j); addN(w.j, w.i); });
   model.beams.forEach((b) => { addN(b.i, b.j); addN(b.j, b.i); });
 
+  // ── Pass 1: 근접 절점 병합 ──
   const freeIds = [...degWB.entries()].filter(([, d]) => d <= 1).map(([id]) => id);
   const remap = new Map<string, string>();
   const resolve = (id: string): string => { let x = id; while (remap.has(x)) x = remap.get(x)!; return x; };
@@ -177,15 +178,53 @@ export const autoConnectFreeEnds = (model: FloorModel, thresh = 300): { model: F
     }
     if (best) { remap.set(fid, best); connected++; }
   }
-  if (connected === 0) return { model, connected: 0 };
 
-  const walls = model.walls.map((w) => ({ ...w, i: resolve(w.i), j: resolve(w.j) })).filter((w) => w.i !== w.j);
+  const nodes = model.nodes.map((n) => ({ ...n })); // 위치 이동 가능하도록 복제
+  let walls = model.walls.map((w) => ({ ...w, i: resolve(w.i), j: resolve(w.j) })).filter((w) => w.i !== w.j);
   const beams = model.beams.map((b) => ({ ...b, i: resolve(b.i), j: resolve(b.j) })).filter((b) => b.i !== b.j);
   const columns = model.columns.map((c) => ({ ...c, node: resolve(c.node) }));
+
+  // ── Pass 2: 자유단 → 벽 선분 내부 접합(T자) ──
+  const nmap = new Map(nodes.map((n) => [n.id, n]));
+  const colNodes = new Set(columns.map((c) => c.node)); // 기둥 절점은 이동 금지
+  let maxW = 0; walls.forEach((w) => { const m = /^W(\d+)$/.exec(w.id); if (m) maxW = Math.max(maxW, +m[1]); });
+  const degOf = () => {
+    const d = new Map<string, number>(); const i2 = (id: string) => d.set(id, (d.get(id) || 0) + 1);
+    walls.forEach((w) => { i2(w.i); i2(w.j); }); beams.forEach((b) => { i2(b.i); i2(b.j); });
+    return d;
+  };
+  const freeIds2 = [...degOf().entries()].filter(([, d]) => d <= 1).map(([id]) => id);
+  for (const fid of freeIds2) {
+    if (colNodes.has(fid)) continue;
+    if ((degOf().get(fid) || 0) > 1) continue; // 앞 단계에서 이미 연결됨
+    const f = nmap.get(fid); if (!f) continue;
+    let bestIdx = -1, bestD = thresh, bestPx = 0, bestPy = 0;
+    for (let idx = 0; idx < walls.length; idx++) {
+      const w = walls[idx];
+      if (w.i === fid || w.j === fid) continue;
+      const a = nmap.get(w.i), b = nmap.get(w.j); if (!a || !b) continue;
+      const dx = b.x - a.x, dy = b.y - a.y; const L2 = dx * dx + dy * dy; if (L2 < 1) continue;
+      const t = ((f.x - a.x) * dx + (f.y - a.y) * dy) / L2;
+      if (t <= 0.15 || t >= 0.85) continue; // 내부만(끝점 근처는 Pass 1 담당)
+      const px = a.x + t * dx, py = a.y + t * dy;
+      const d = Math.hypot(f.x - px, f.y - py);
+      if (d <= bestD) { bestD = d; bestIdx = idx; bestPx = px; bestPy = py; }
+    }
+    if (bestIdx >= 0) {
+      const w = walls[bestIdx];
+      f.x = bestPx; f.y = bestPy; // 자유단을 선분 위로 정합
+      walls.splice(bestIdx, 1,
+        { ...w, id: `W${++maxW}`, i: w.i, j: fid },
+        { ...w, id: `W${++maxW}`, i: fid, j: w.j });
+      connected++;
+    }
+  }
+
+  if (connected === 0) return { model, connected: 0 };
   const used = new Set<string>();
   walls.forEach((w) => { used.add(w.i); used.add(w.j); });
   beams.forEach((b) => { used.add(b.i); used.add(b.j); });
   columns.forEach((c) => used.add(c.node));
-  const nodes = model.nodes.filter((n) => used.has(n.id));
-  return { model: { ...model, nodes, walls, beams, columns }, connected };
+  const outNodes = nodes.filter((n) => used.has(n.id));
+  return { model: { ...model, nodes: outNodes, walls, beams, columns }, connected };
 };
