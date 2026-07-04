@@ -64,12 +64,16 @@ const ellipsePoints = (cx: number, cy: number, major: Point2D, ratio: number, a0
 
 export const Workspace: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const bgCanvasRef = useRef<HTMLCanvasElement>(null); // 정적 DXF 배경(대용량 도면 성능)
   const containerRef = useRef<HTMLDivElement>(null);
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
   const dragCounter = useRef(0);
   // 파일별로 고정한 DXF 맞춤(scale). 구조부재 추출 후엔 리사이즈해도 이 값을 재사용해
   // 배경 도면과 추출 부재(px 좌표)의 정합이 깨지지 않게 한다.
   const dxfFitRef = useRef<{ entities: any; scale: number } | null>(null);
+  // DXF 배경 드로우리스트(레이어별 Path2D, scene px 좌표) — Fabric 객체 대신 한 번에 그림.
+  // 숨긴 레이어는 빌드 시 제외하므로 그리기 단계에서 별도 가시성 조회 불필요.
+  const dxfDrawRef = useRef<{ color: string; path: Path2D }[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [resizeTick, setResizeTick] = useState(0); // 영역 크기 변화 시 도면 재맞춤 트리거
 
@@ -235,10 +239,11 @@ export const Workspace: React.FC = () => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
 
-    // 기존 DXF 객체 제거
+    // 기존 DXF 객체 제거(구버전 잔재 방어) — 이제 DXF는 배경 캔버스가 그림
     canvas.getObjects().filter((o: any) => o.isDxf).forEach((o) => canvas.remove(o));
 
     if (!dxfEntities || dxfEntities.length === 0) {
+      dxfDrawRef.current = []; // 배경 비우기
       canvas.requestRenderAll();
       return;
     }
@@ -275,14 +280,14 @@ export const Workspace: React.FC = () => {
       return s[Math.max(0, Math.floor(s.length * p / 100))];
     };
     let minX: number, minY: number, maxX: number, maxY: number;
-    if (allX.length === 0) { canvas.requestRenderAll(); return; }
+    if (allX.length === 0) { dxfDrawRef.current = []; canvas.requestRenderAll(); return; }
     minX = pct(allX, 2); maxX = pct(allX, 98);
     minY = pct(allY, 2); maxY = pct(allY, 98);
     // 너무 좁으면(점 하나 수준) 전체 범위로 폴백
     if (maxX - minX < 1) { minX = Math.min(...allX); maxX = Math.max(...allX); }
     if (maxY - minY < 1) { minY = Math.min(...allY); maxY = Math.max(...allY); }
 
-    if (!isFinite(minX) || !isFinite(maxX)) { canvas.requestRenderAll(); return; }
+    if (!isFinite(minX) || !isFinite(maxX)) { dxfDrawRef.current = []; canvas.requestRenderAll(); return; }
 
     // 1-b) 미니맵에서 추출 범위(crop)를 지정했으면 그 영역에 맞춰 확대한다.
     //      → 4장 도면 중 선택한 한 장이 화면을 채워 B1F 수준의 정밀도로 보인다.
@@ -312,56 +317,52 @@ export const Workspace: React.FC = () => {
     // 구조 부재 추출이 화면과 정확히 정합되도록 변환 파라미터 저장
     useDrawingStore.getState().setDxfTransform({ scale, minX, maxY, pad });
 
-    // 3) 엔티티 → Fabric 객체
+    // 3) 엔티티 → 레이어별 Path2D (정적 배경 드로우리스트). Fabric 객체를 만들지 않아
+    //    수만 개 엔티티도 한 번의 stroke로 그린다(대용량 도면 성능).
+    const groups = new Map<string, { color: string; path: Path2D }>();
+    const grpPath = (layerName: string, color: string): Path2D => {
+      let g = groups.get(layerName);
+      if (!g) { g = { color, path: new Path2D() }; groups.set(layerName, g); }
+      return g.path;
+    };
+    const addPoly = (path: Path2D, pts: { x: number; y: number }[]) => {
+      if (pts.length < 2) return;
+      path.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) path.lineTo(pts[i].x, pts[i].y);
+    };
+
     dxfEntities.forEach((e: any) => {
       const layer = layerMap.get(e.layer);
       const visible = layer ? layer.visible : true;
       const color = (layer && layer.color) || '#d4d4d8';
-      const base = { stroke: color, strokeWidth: 1, fill: 'transparent', selectable: false, evented: false, visible };
-      let obj: fabric.Object | null = null;
-
       const type = (e.type || '').toUpperCase();
-      // 비구조 엔티티 스킵: 텍스트/해치/치수/삽입블록은 구조 추출에 불필요하고 성능·가시성 저하
+      // 비구조 엔티티 스킵 + 숨긴 레이어는 드로우리스트에서 제외
       if (type === 'TEXT' || type === 'MTEXT' || type === 'HATCH' || type === 'SOLID' ||
           type === 'DIMENSION' || type === 'ATTRIB' || type === 'ATTDEF' || type === 'INSERT') return;
-      // 숨겨진 레이어는 fabric에 추가 자체를 건너뜀
       if (!visible) return;
 
       if (type === 'LINE' && Array.isArray(e.vertices) && e.vertices.length >= 2) {
         const [a, b] = e.vertices;
-        obj = new fabric.Line([tx(a.x), ty(a.y), tx(b.x), ty(b.y)], base);
+        const p = grpPath(e.layer, color);
+        p.moveTo(tx(a.x), ty(a.y)); p.lineTo(tx(b.x), ty(b.y));
       } else if ((type === 'LWPOLYLINE' || type === 'POLYLINE') && Array.isArray(e.vertices) && e.vertices.length >= 2) {
-        const pts = e.vertices.map((v: any) => ({ x: tx(v.x), y: ty(v.y) }));
-        obj = new fabric.Polyline(pts, { ...base, objectCaching: false });
-      } else if (type === 'CIRCLE' && e.center) {
-        obj = new fabric.Circle({
-          left: tx(e.center.x), top: ty(e.center.y), radius: e.radius * scale,
-          originX: 'center', originY: 'center', ...base,
-        });
+        addPoly(grpPath(e.layer, color), e.vertices.map((v: any) => ({ x: tx(v.x), y: ty(v.y) })));
+      } else if (type === 'CIRCLE' && e.center && typeof e.radius === 'number') {
+        const p = grpPath(e.layer, color);
+        const cx = tx(e.center.x), cy = ty(e.center.y), r = e.radius * scale;
+        p.moveTo(cx + r, cy); p.arc(cx, cy, r, 0, Math.PI * 2);
       } else if (type === 'ARC' && e.center && typeof e.radius === 'number') {
-        const pts = arcPoints(e.center.x, e.center.y, e.radius, e.startAngle ?? 0, e.endAngle ?? Math.PI * 2)
-          .map((p) => ({ x: tx(p.x), y: ty(p.y) }));
-        obj = new fabric.Polyline(pts, { ...base, objectCaching: false });
+        addPoly(grpPath(e.layer, color), arcPoints(e.center.x, e.center.y, e.radius, e.startAngle ?? 0, e.endAngle ?? Math.PI * 2).map((p) => ({ x: tx(p.x), y: ty(p.y) })));
       } else if (type === 'ELLIPSE' && e.center && e.majorAxisEndPoint) {
-        const pts = ellipsePoints(e.center.x, e.center.y, e.majorAxisEndPoint, e.axisRatio ?? 1, e.startAngle ?? 0, e.endAngle ?? Math.PI * 2)
-          .map((p) => ({ x: tx(p.x), y: ty(p.y) }));
-        obj = new fabric.Polyline(pts, { ...base, objectCaching: false });
+        addPoly(grpPath(e.layer, color), ellipsePoints(e.center.x, e.center.y, e.majorAxisEndPoint, e.axisRatio ?? 1, e.startAngle ?? 0, e.endAngle ?? Math.PI * 2).map((p) => ({ x: tx(p.x), y: ty(p.y) })));
       } else if (type === 'SPLINE') {
         const src = (Array.isArray(e.fitPoints) && e.fitPoints.length >= 2) ? e.fitPoints : e.controlPoints;
-        if (Array.isArray(src) && src.length >= 2) {
-          const pts = src.map((p: any) => ({ x: tx(p.x), y: ty(p.y) }));
-          obj = new fabric.Polyline(pts, { ...base, objectCaching: false });
-        }
-      }
-
-      if (obj) {
-        (obj as any).isDxf = true;
-        (obj as any).dxfLayer = e.layer;
-        canvas.add(obj);
+        if (Array.isArray(src) && src.length >= 2) addPoly(grpPath(e.layer, color), src.map((p: any) => ({ x: tx(p.x), y: ty(p.y) })));
       }
     });
 
-    canvas.requestRenderAll();
+    dxfDrawRef.current = [...groups.values()];
+    canvas.requestRenderAll(); // → after:render → renderBg 로 배경 재그림
   }, [dxfEntities, dxfLayers, resizeTick, cropBBox]);
 
   // 🔶 모델 오버레이: 자유단(연결 안 된 벽/보 끝점) 강조 + 검토 탭 선택 부재 하이라이트
@@ -457,12 +458,43 @@ export const Workspace: React.FC = () => {
     const height = containerRef.current.clientHeight;
 
     const canvas = new fabric.Canvas(canvasRef.current, {
-      width, height, backgroundColor: '#1e1e1e', 
+      width, height, backgroundColor: 'transparent', // DXF는 뒤 배경 캔버스가 그림
       selection: useDrawingStore.getState().currentMode === 'SELECT',
     });
-    
+
     fabricCanvasRef.current = canvas;
     (canvasRef.current as any).__fabric = canvas; // 디버깅/E2E 테스트에서 캔버스 인스턴스 접근용
+
+    // 🖼️ 정적 DXF 배경: 레이어별 Path2D를 Fabric 뷰포트 변환(줌/팬)에 맞춰 한 번에 그림.
+    const sizeBg = () => {
+      const bg = bgCanvasRef.current, cont = containerRef.current;
+      if (!bg || !cont) return;
+      const dpr = window.devicePixelRatio || 1;
+      bg.width = Math.max(1, Math.floor(cont.clientWidth * dpr));
+      bg.height = Math.max(1, Math.floor(cont.clientHeight * dpr));
+    };
+    const renderBg = () => {
+      const bg = bgCanvasRef.current; if (!bg) return;
+      const ctx = bg.getContext('2d'); if (!ctx) return;
+      const dpr = window.devicePixelRatio || 1;
+      // 배경 채움(옛 fabric 배경색 유지)
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = '#1e1e1e';
+      ctx.fillRect(0, 0, bg.width, bg.height);
+      const groups = dxfDrawRef.current;
+      if (!groups.length) return;
+      const vpt = canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
+      const zoom = vpt[0] || 1;
+      // device = dpr ∘ viewport(scene). scene px 좌표의 Path2D를 그대로 stroke.
+      ctx.setTransform(dpr * vpt[0], dpr * vpt[1], dpr * vpt[2], dpr * vpt[3], dpr * vpt[4], dpr * vpt[5]);
+      ctx.lineWidth = 1 / zoom; // 화면상 ~1px
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      for (const g of groups) { ctx.strokeStyle = g.color; ctx.stroke(g.path); }
+    };
+    sizeBg();
+    (canvas as any).__renderBg = renderBg; // 리사이즈 등에서 강제 호출용
+    (canvas as any).__sizeBg = sizeBg;
+    canvas.on('after:render', renderBg);
 
     canvas.on('mouse:wheel', (opt) => {
       const evt = opt.e;
@@ -914,6 +946,7 @@ export const Workspace: React.FC = () => {
       if (w < 1 || h < 1) return;
       if (canvas.getWidth() === w && canvas.getHeight() === h) return;
       canvas.setDimensions({ width: w, height: h });
+      sizeBg(); // 배경 캔버스도 컨테이너 크기에 맞춤
       setResizeTick((t) => t + 1); // 도면/격자/배경 재맞춤 유도
     };
     window.addEventListener('resize', handleResize);
@@ -1022,6 +1055,8 @@ export const Workspace: React.FC = () => {
         <div>StruXureAI <span className="text-zinc-300">v{__APP_VERSION__}</span> · by {__APP_DEVELOPER__}</div>
         <div className="text-zinc-600">build {__APP_BUILD_DATE__} · {__APP_COMMIT__}</div>
       </div>
+      {/* 정적 DXF 배경 (Fabric 뒤). Fabric 캔버스는 투명 배경으로 이 위에 부재/오버레이만 그림 */}
+      <canvas ref={bgCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
       <canvas ref={canvasRef} className="w-full h-full" />
     </div>
   );
