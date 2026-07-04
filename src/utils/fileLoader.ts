@@ -95,11 +95,16 @@ const expandEntities = (entities: any[], blocks: Record<string, any>, parent: Ma
   return out;
 };
 
+// 무거운 동기 작업 직전에 호출해 오버레이(진행률)가 실제로 리페인트되도록 이벤트루프를 양보.
+const paintYield = () => new Promise<void>((res) => setTimeout(res, 24));
+
 // DXF 텍스트 → 스토어(레이어/엔티티) 적용. DXF·DWG 변환본이 공유.
-const parseDxfText = (text: string) => {
+// 각 단계 사이에 진행률을 갱신하고 UI를 양보한다(0.6~1.0 구간을 담당).
+const parseDxfText = async (text: string) => {
   const store = useDrawingStore.getState();
+  store.setLoadingProgress(0.62, '도면 파싱 중…'); await paintYield();
   const parser = new DxfParser();
-  const dxf = parser.parseSync(text);
+  const dxf = parser.parseSync(text); // 동기 파싱(대용량이면 잠깐 블록)
   if (!dxf) throw new Error('빈 DXF');
 
   const layerTable = dxf.tables?.layer?.layers ?? {};
@@ -109,6 +114,7 @@ const parseDxfText = (text: string) => {
     color: aciToHex[layerTable[name].color] || '#d4d4d8',
   }));
 
+  store.setLoadingProgress(0.82, '블록 전개 중…'); await paintYield();
   const rawEntities = Array.isArray(dxf.entities) ? dxf.entities : [];
   // INSERT(블록)/DIMENSION을 실제 도형으로 전개 → 평면도가 비어 보이던 문제 해결
   const blocks = (dxf.blocks || {}) as Record<string, any>;
@@ -122,6 +128,7 @@ const parseDxfText = (text: string) => {
     }
   });
 
+  store.setLoadingProgress(0.93, '레이어 정리·렌더 중…'); await paintYield();
   // 새 파일 로드 전, 직전 파일에서 추출된 구조모델/부재/뷰포트를 초기화한다.
   // (이걸 안 하면 이전 도면의 그리드 라벨·기둥이 새 도면 위에 겹쳐 보인다)
   store.setModel(null);
@@ -131,34 +138,41 @@ const parseDxfText = (text: string) => {
   store.setDxfLayers(layers);
   store.setDxfEntities(entities);
   if (!store.isSidebarOpen) store.toggleSidebar();
+  store.setLoadingProgress(1, '완료'); await paintYield();
 };
 
-const loadDxf = (file: File) => {
-  const reader = new FileReader();
-  reader.onload = (evt) => {
-    try {
-      parseDxfText(evt.target?.result as string);
-    } catch (err) {
-      alert('DXF 파일을 읽는 데 실패했습니다.');
-    }
-  };
-  reader.readAsText(file);
+const loadDxf = async (file: File) => {
+  const store = useDrawingStore.getState();
+  store.setLoadingFile(true, 'DXF 읽는 중…');
+  try {
+    store.setLoadingProgress(0.3, 'DXF 읽는 중…'); await paintYield();
+    const text = await file.text();
+    await parseDxfText(text);
+  } catch (err) {
+    alert('DXF 파일을 읽는 데 실패했습니다.');
+  } finally {
+    store.setLoadingFile(false);
+  }
 };
 
 // 바이너리 DWG → (LibreDWG WASM) DXF 변환 → 파싱.
 // WASM(~9MB)은 DWG를 처음 열 때만 동적 로드된다.
 const loadDwg = async (file: File) => {
   const store = useDrawingStore.getState();
-  store.setLoadingFile(true, 'DWG 도면 변환 중...');
+  store.setLoadingFile(true, '파일 읽는 중…');
   try {
+    store.setLoadingProgress(0.05, '파일 읽는 중…'); await paintYield();
     const buffer = await file.arrayBuffer();
+    store.setLoadingProgress(0.15, '변환 모듈 로드 중…'); await paintYield();
     const { LibreDwg } = await import('@mlightcad/libredwg-web');
     // Vite가 번들 시 emit한 wasm 자산을 자동 로드 (new URL(..., import.meta.url) 처리)
     const lib = await LibreDwg.create();
+    // DWG→DXF 변환은 동기 블록(수 초). 바를 30%로 올리고 UI를 양보한 뒤 실행.
+    store.setLoadingProgress(0.3, 'DWG→DXF 변환 중…'); await paintYield();
     const dxfBytes = lib.dwg_write_dxf(buffer);
     if (!dxfBytes) throw new Error('DWG → DXF 변환 실패');
     const text = new TextDecoder('utf-8').decode(dxfBytes);
-    parseDxfText(text);
+    await parseDxfText(text);
   } catch (err) {
     console.error('[StruXureAI] DWG 로드 실패', err);
     // 동적 import(청크) 로드 실패 = 새 배포 후 예전 페이지에 남은 경우 → 새로고침 안내

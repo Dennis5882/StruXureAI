@@ -64,6 +64,7 @@ interface DrawingState {
   // ⏳ 파일 로딩(DWG 변환 등) 상태
   isLoadingFile: boolean;
   loadingMessage: string;
+  loadingProgress: number; // 0~1 (단계별)
 
   setMode: (mode: DrawingMode) => void;
   setType: (type: StructureType) => void;
@@ -95,6 +96,7 @@ interface DrawingState {
   updateFloor: (id: string, patch: Partial<Pick<FloorModel, 'name' | 'elevation' | 'height'>>) => void;
   removeFloor: (id: string) => void;
   setLoadingFile: (loading: boolean, message?: string) => void;
+  setLoadingProgress: (progress: number, message?: string) => void;
 
   addLine: (line: Omit<StructureLineData, 'id'> | StructureLineData) => void;
   addLines: (lines: StructureLineData[]) => void;
@@ -139,6 +141,7 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   floors: [],
   isLoadingFile: false,
   loadingMessage: '',
+  loadingProgress: 0,
 
   setMode: (mode) => set({ currentMode: mode, selectedLineId: mode !== 'SELECT' ? null : undefined }),
   setType: (type) => set({ currentType: type }),
@@ -226,7 +229,8 @@ export const useDrawingStore = create<DrawingState>((set) => ({
     floors: state.floors.map((f) => (f.id === id ? { ...f, ...patch } : f)),
   })),
   removeFloor: (id) => set((state) => ({ floors: state.floors.filter((f) => f.id !== id) })),
-  setLoadingFile: (isLoadingFile, loadingMessage = '') => set({ isLoadingFile, loadingMessage }),
+  setLoadingFile: (isLoadingFile, loadingMessage = '') => set({ isLoadingFile, loadingMessage, loadingProgress: isLoadingFile ? 0 : 0 }),
+  setLoadingProgress: (loadingProgress, message) => set((s) => ({ loadingProgress, loadingMessage: message ?? s.loadingMessage })),
 
   addLine: (line) => set((state) => {
     const newLine = { ...line, id: ('id' in line) ? line.id : `str_${Date.now()}_${Math.random().toString(36).substring(2, 9)}` } as StructureLineData;

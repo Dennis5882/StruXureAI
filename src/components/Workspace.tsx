@@ -77,7 +77,7 @@ export const Workspace: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [resizeTick, setResizeTick] = useState(0); // 영역 크기 변화 시 도면 재맞춤 트리거
 
-  const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale, isLoadingFile, loadingMessage, gridSize, cropBBox, model, selectedMemberId } = useDrawingStore();
+  const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale, isLoadingFile, loadingMessage, loadingProgress, gridSize, cropBBox, model, selectedMemberId } = useDrawingStore();
   const { t } = useT();
 
   // ⌨️ 단축키: Ctrl+Z 실행취소 · Delete/Backspace 로 선택된 검토 부재 삭제
@@ -1041,12 +1041,19 @@ export const Workspace: React.FC = () => {
           </div>
         </div>
       )}
-      {/* ⏳ 파일 로딩 오버레이 (DWG 변환 등) */}
+      {/* ⏳ 파일 로딩 오버레이 (DWG 변환 등) + 단계별 진행률 */}
       {isLoadingFile && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm">
-          <div className="flex flex-col items-center space-y-4">
+          <div className="flex flex-col items-center space-y-4 w-72 max-w-[80%]">
             <svg className="animate-spin" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
             <div className="text-indigo-200 text-sm font-medium">{loadingMessage || t('ws.loading')}</div>
+            <div className="w-full">
+              <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+                <div className="h-full bg-indigo-500 rounded-full transition-[width] duration-200 ease-out"
+                  style={{ width: `${Math.round(loadingProgress * 100)}%` }} />
+              </div>
+              <div className="mt-1 text-right text-[10px] text-zinc-500 font-mono">{Math.round(loadingProgress * 100)}%</div>
+            </div>
           </div>
         </div>
       )}
