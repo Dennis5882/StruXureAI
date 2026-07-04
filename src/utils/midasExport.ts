@@ -114,6 +114,31 @@ export const buildMidasRequests = (
   return { requests, summary: { nodes: nodes.length, columns, walls, beams, sections: sects.length, thiks: thiks.length } };
 };
 
+// 층 목록 → MIDAS Story Data(STOR) 요청. 공식 스키마(db/STOR).
+// 범위(모델링) 준수: 이름/레벨/층폭(bbox 기하)만 채우고 하중·지진 편심은 중립값(0/1) —
+// 실제 풍/지진 파라미터는 Gen NX에서 코드별로 설정(해석 범위 밖).
+const storyRequest = (floors: FloorModel[]): MidasRequest | null => {
+  if (!floors.length) return null;
+  const a: any = {};
+  floors.forEach((f, i) => {
+    const bb = f.bbox;
+    const wx = bb ? bb.maxX - bb.minX : 0, wy = bb ? bb.maxY - bb.minY : 0;
+    const cx = bb ? (bb.minX + bb.maxX) / 2 : 0, cy = bb ? (bb.minY + bb.maxY) / 2 : 0;
+    a[i + 1] = {
+      STORY_NAME: f.name || `${i + 1}F`,
+      STORY_LEVEL: Math.round(f.elevation ?? 0),
+      bFLOOR_DIAPHRAGM: false,
+      WIND_FLOOR_WIDTH_X: Math.round(wx), WIND_FLOOR_WIDTH_Y: Math.round(wy),
+      WIND_CENTER_X: Math.round(cx), WIND_CENTER_Y: Math.round(cy),
+      WIND_ECCENT_X: 0, WIND_ECCENT_Y: 0,
+      SEIS_ACC_ECCENT_X: 0, SEIS_ACC_ECCENT_Y: 0,
+      SEIS_INHERENT_ECCENT_X: 0, SEIS_INHERENT_ECCENT_Y: 0,
+      SEIS_TORSIONAL_AMP_FACTOR_X: 1, SEIS_TORSIONAL_AMP_FACTOR_Y: 1,
+    };
+  });
+  return { method: 'PUT', command: '/db/STOR', body: { Assign: a } };
+};
+
 /**
  * 다층(Building) → MIDAS API 시퀀스. 각 층(FloorModel)을 자신의 elevation~elevation+height 에 배치.
  * MIDAS 절점은 월드 (x,y,z) 반올림 키로 병합 → 아래층 상단과 위층 하단이 같은 (x,y)면 절점 공유(기둥 연속).
@@ -164,6 +189,8 @@ export const buildMidasRequestsBuilding = (floors: FloorModel[], opts?: MidasOpt
   }
 
   const requests = assembleRequests(nodes, elems, sects, thiks, opts);
+  const stor = storyRequest(floors);
+  if (stor) requests.push(stor); // 층 메타(Story Data) 등록
   return { requests, summary: { nodes: nodes.length, columns, walls, beams, sections: sects.length, thiks: thiks.length } };
 };
 

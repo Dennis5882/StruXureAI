@@ -1,6 +1,6 @@
 {
   "name": "struxureai",
-  "version": "0.31.3",
+  "version": "0.32.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

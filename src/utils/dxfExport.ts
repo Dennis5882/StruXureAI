@@ -134,3 +134,25 @@ export const buildDxfFromModel = (model: FloorModel): string => {
   }
   return assembleDxf(ent, used);
 };
+
+// ── 다층(Building) 3D 와이어프레임 DXF ────────────────────────────
+// 각 층을 elevation(z)에 배치: 벽/보=층 레벨 수평선, 기둥=elevation→+height 수직선.
+export const buildBuildingDxf = (floors: FloorModel[]): string => {
+  const ent: string[] = [];
+  const e = (code: number, val: string | number) => { ent.push(String(code), String(val)); };
+  const used = new Map<string, number>();
+  const line3d = (ax: number, ay: number, az: number, bx: number, by: number, bz: number, layer: string, color: number) => {
+    used.set(layer, color);
+    e(0, 'LINE'); e(8, layer);
+    e(10, fmt(ax)); e(20, fmt(ay)); e(30, fmt(az));
+    e(11, fmt(bx)); e(21, fmt(by)); e(31, fmt(bz));
+  };
+  for (const f of floors) {
+    const base = f.elevation ?? 0, top = base + (f.height ?? 3000);
+    const nb = new Map(f.nodes.map((n) => [n.id, n]));
+    for (const w of f.walls) { const a = nb.get(w.i), b = nb.get(w.j); if (a && b) line3d(a.x, a.y, base, b.x, b.y, base, LAYERS.WALL.layer, LAYERS.WALL.color); }
+    for (const bm of f.beams) { const a = nb.get(bm.i), b = nb.get(bm.j); if (a && b) line3d(a.x, a.y, base, b.x, b.y, base, LAYERS.BEAM.layer, LAYERS.BEAM.color); }
+    for (const c of f.columns) { const nd = nb.get(c.node); if (nd) line3d(nd.x, nd.y, base, nd.x, nd.y, top, LAYERS.COLUMN.layer, LAYERS.COLUMN.color); }
+  }
+  return assembleDxf(ent, used);
+};

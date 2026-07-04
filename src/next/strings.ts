@@ -81,6 +81,7 @@ const DICT: Record<string, Record<Lang, string>> = {
   ckReady:      { ko: '아래에서 층수·층고·MAPI-Key 입력 후 전송', en: 'Enter stories/height/MAPI-Key below, then send', zh: '於下方輸入層數/層高/MAPI-Key 後傳送' },
   exDxf:        { ko: 'DXF 내보내기', en: 'Export DXF', zh: '匯出 DXF' },
   exDxfHint:    { ko: '편집 반영된 구조모델을 DXF(mm)로 저장', en: 'Save the edited model as DXF (mm)', zh: '將編輯後的模型存為 DXF (mm)' },
+  exBldgDxf:    { ko: '빌딩 DXF (3D)', en: 'Building DXF (3D)', zh: '建物 DXF (3D)' },
 
   // 다층(Building)
   flTitle:      { ko: '층 구성 (Building)', en: 'Floors (Building)', zh: '樓層 (Building)' },
