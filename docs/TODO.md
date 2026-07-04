@@ -47,7 +47,8 @@
 > UI v2(`index.next.html`) 검토 중: 5단계 스테퍼·레이어 타입 지정·LINE 확인 배너·검토 탭·하단 상태바 포함. Vercel 배포 완료(`/index.next.html`).
 - ~~**U3 검토→수정 루프**~~ ✅ **완료(v0.29~0.30)** — 검토 탭/캔버스 **양방향** 부재 선택+강조, 두께/단면(기둥 b/h/회전·벽 두께·보 폭) 인라인 편집→model 반영, **자유단 amber 링 하이라이트**, **부재 삭제**(삭제버튼·Delete키, model+캔버스 line 동기), **부재 추가**(벽/기둥 그리기→model 편입), **자유단 자동 연결**(≤300mm 근접 자유단 병합, B1F 60→24). store `selectedMemberId`/`updateMember`/`deleteMember`/`addLineToModel`/`autoConnectFreeEnds`, member↔line `lineId` 링크.
 - (이번 세션 추가) 재로드/재추출 겹침 수정(`clearCadLines`), 캔버스 CROP 모드(도면에서 직접 범위 선택), 언어 드롭다운, CTA 정리(추출만).
-- **성능: DXF 정적 배경 렌더링(v0.31.1)** — DXF 엔티티를 Fabric 객체 수만 개 대신 레이어별 Path2D로 배경 캔버스에 한 번에 stroke(뷰포트 동기 `after:render`). tracing 68k에서 fabric 객체 3만→0, 줌/팬 버벅임 해소. 구조부재/오버레이만 Fabric 유지. (남은 부하: DWG→DXF WASM 변환 ~3s는 별개.)
+- **성능: DXF 정적 배경 렌더링(v0.31.1)** — DXF 엔티티를 Fabric 객체 수만 개 대신 레이어별 Path2D로 배경 캔버스에 한 번에 stroke(뷰포트 동기 `after:render`). tracing 68k에서 fabric 객체 3만→0, 줌/팬 버벅임 해소. 구조부재/오버레이만 Fabric 유지.
+- **성능/UX: 파일 열기 진행률 바(v0.31.2) + DWG→DXF Web Worker 변환(v0.31.3)** — `src/workers/dwgWorker.ts`로 변환을 메인 스레드 밖으로 격리(실패 시 메인 폴백). 변환 중 UI 안 멈춤(메인 응답 <50ms), 바 크립 30→58%. 단계별 진행률(파일읽기→모듈→변환→파싱→전개→완료). (남은 부하: DXF 파싱 parseSync는 아직 메인 — 필요 시 워커화.)
 - **C1 실도면 일반성** (⚠️ B1F 외 다른 DWG 필요 — 사용자 제공): 레이어 수동 지정 기능 추가됨으로 다른 관례 도면도 대응 가능. 새 도면 제공 시 테스트 바로 가능.
 - **B1 다층**(다중 DWG→BuildingModel): 🟡 **Phase1~2 완료(v0.31.0)** — 스냅샷 방식 층 수집(`floors[]`, 저장/레벨·층고·층명 편집/삭제, FloorsPanel), **다층 MIDAS 전송**(`buildMidasRequestsBuilding`, 각 층 elevation~+height 배치, 절점 월드(x,y,z) 병합→경계층 절점 공유=기둥 연속). B1F×2 검증: z{0,3000,6000} 각 145절점(경계 병합), 기둥100·벽142. **남음**: 층별 다른 평면 로드(현재는 같은 DWG 재추출로 층 저장), Phase3 빌딩 DXF(3D).
 - **B2 Story Data(STRY) 등록** + **A4 다층 라이브 재전송**(Gen NX 재연결): 한 동(棟) 핸드오프 — MIDAS 스토리 메타 등록은 미구현(기하 조립만 완료).

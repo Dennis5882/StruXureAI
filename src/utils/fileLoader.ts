@@ -157,21 +157,47 @@ const loadDxf = async (file: File) => {
 
 // 바이너리 DWG → (LibreDWG WASM) DXF 변환 → 파싱.
 // WASM(~9MB)은 DWG를 처음 열 때만 동적 로드된다.
+// DWG(ArrayBuffer) → DXF 텍스트. 워커에서 변환하고, 실패 시 메인 스레드로 폴백.
+// 변환 중 메인 스레드가 자유로우므로 바를 부드럽게 크립(creep)시킨다.
+const convertDwgToDxf = async (buffer: ArrayBuffer): Promise<string> => {
+  const store = useDrawingStore.getState();
+  let creep = 0.3;
+  const iv = setInterval(() => { creep = Math.min(0.58, creep + 0.015); store.setLoadingProgress(creep, 'DWG→DXF 변환 중…'); }, 150);
+  try {
+    // 1) 워커 경로 (UI 안 멈춤)
+    const worker = new Worker(new URL('../workers/dwgWorker.ts', import.meta.url), { type: 'module' });
+    try {
+      return await new Promise<string>((resolve, reject) => {
+        worker.onmessage = (ev: MessageEvent<{ ok: boolean; text?: string; error?: string }>) =>
+          ev.data.ok ? resolve(ev.data.text as string) : reject(new Error(ev.data.error || 'DWG 변환 실패'));
+        worker.onerror = (ev) => reject(new Error(ev.message || 'DWG 워커 오류'));
+        worker.postMessage(buffer); // 복제 전송(원본 유지 → 폴백 가능)
+      });
+    } finally {
+      worker.terminate();
+    }
+  } catch (werr) {
+    // 2) 폴백: 메인 스레드 변환 (워커 미지원/로드 실패 시)
+    console.warn('[StruXureAI] DWG 워커 실패 → 메인 스레드 폴백', werr);
+    const { LibreDwg } = await import('@mlightcad/libredwg-web');
+    const lib = await LibreDwg.create();
+    const dxfBytes = lib.dwg_write_dxf(buffer);
+    if (!dxfBytes) throw new Error('DWG → DXF 변환 실패');
+    return new TextDecoder('utf-8').decode(dxfBytes as any);
+  } finally {
+    clearInterval(iv);
+  }
+};
+
 const loadDwg = async (file: File) => {
   const store = useDrawingStore.getState();
   store.setLoadingFile(true, '파일 읽는 중…');
   try {
     store.setLoadingProgress(0.05, '파일 읽는 중…'); await paintYield();
     const buffer = await file.arrayBuffer();
-    store.setLoadingProgress(0.15, '변환 모듈 로드 중…'); await paintYield();
-    const { LibreDwg } = await import('@mlightcad/libredwg-web');
-    // Vite가 번들 시 emit한 wasm 자산을 자동 로드 (new URL(..., import.meta.url) 처리)
-    const lib = await LibreDwg.create();
-    // DWG→DXF 변환은 동기 블록(수 초). 바를 30%로 올리고 UI를 양보한 뒤 실행.
+    // DWG→DXF 변환(수 초, 동기 블록)은 워커로 격리 → 변환 중에도 UI 반응.
     store.setLoadingProgress(0.3, 'DWG→DXF 변환 중…'); await paintYield();
-    const dxfBytes = lib.dwg_write_dxf(buffer);
-    if (!dxfBytes) throw new Error('DWG → DXF 변환 실패');
-    const text = new TextDecoder('utf-8').decode(dxfBytes);
+    const text = await convertDwgToDxf(buffer);
     await parseDxfText(text);
   } catch (err) {
     console.error('[StruXureAI] DWG 로드 실패', err);
