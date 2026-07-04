@@ -3,7 +3,7 @@ import { MousePointer, PenTool, Square, Circle, Triangle, Eraser, Sparkles, Laye
 import { useDrawingStore } from '../store/useDrawingStore';
 import { DrawingMode, StructureType } from '../types/drawing';
 import { extractCenterLinesFromWalls } from '../utils/geometry';
-import { buildDxf } from '../utils/dxfExport';
+import { buildDxf, buildDxfFromModel } from '../utils/dxfExport';
 import { fetchAIAnalysis } from '../utils/api';
 import { loadFile } from '../utils/fileLoader';
 import { useT, LANGS } from '../i18n';
@@ -63,7 +63,8 @@ export const Toolbar: React.FC = () => {
   const handleSaveDxf = () => {
     const st = useDrawingStore.getState();
     if (st.lines.length === 0) { alert(t('al.noExport')); return; }
-    const dxf = buildDxf(st.lines, st.dxfTransform);
+    // 정식 모델이 있으면 그것을(편집 반영) 우선, 없으면 캔버스 lines 폴백
+    const dxf = st.model ? buildDxfFromModel(st.model) : buildDxf(st.lines, st.dxfTransform);
     const blob = new Blob([dxf], { type: 'application/dxf' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

@@ -1,5 +1,6 @@
 import { StructureLineData, Point2D } from '../types/drawing';
 import { DxfTransform } from '../store/useDrawingStore';
+import { FloorModel } from '../types/structural';
 
 // ── DXF 내보내기 (AutoCAD R12 / AC1009, LINE 기반) ──────────
 // MIDAS Gen NX 등 엄격한 임포터 호환을 위해:
@@ -17,6 +18,24 @@ const LAYERS: Record<string, { layer: string; color: number }> = {
 const DEFAULT_LAYER = { layer: 'S_MISC', color: 7 };
 
 const fmt = (n: number) => (Math.round(n * 1000) / 1000).toString();
+
+// ENTITIES(ent) + 사용 레이어 → 완전한 R12 DXF 문자열로 조립 (buildDxf/buildDxfFromModel 공용)
+const assembleDxf = (ent: string[], used: Map<string, number>): string => {
+  used.set('0', 7); // 기본 레이어 0 항상 포함
+  const out: string[] = [];
+  const o = (code: number, val: string | number) => { out.push(String(code), String(val)); };
+  o(0, 'SECTION'); o(2, 'HEADER');
+  o(9, '$ACADVER'); o(1, 'AC1009');
+  o(9, '$INSUNITS'); o(70, 4); // 4 = mm
+  o(0, 'ENDSEC');
+  o(0, 'SECTION'); o(2, 'TABLES'); o(0, 'TABLE'); o(2, 'LAYER'); o(70, used.size);
+  for (const [name, color] of used) { o(0, 'LAYER'); o(2, name); o(70, 0); o(62, color); o(6, 'CONTINUOUS'); }
+  o(0, 'ENDTAB'); o(0, 'ENDSEC');
+  o(0, 'SECTION'); o(2, 'ENTITIES');
+  out.push(...ent);
+  o(0, 'ENDSEC'); o(0, 'EOF');
+  return out.join('\r\n') + '\r\n'; // 고전 DXF = CRLF
+};
 
 export const buildDxf = (lines: StructureLineData[], transform: DxfTransform | null): string => {
   const wx = transform ? (px: number) => transform.minX + (px - transform.pad) / transform.scale : (px: number) => px;
@@ -67,23 +86,51 @@ export const buildDxf = (lines: StructureLineData[], transform: DxfTransform | n
   // 사용 레이어 테이블
   const used = new Map<string, number>();
   for (const l of lines) { const x = LAYERS[l.type] || DEFAULT_LAYER; used.set(x.layer, x.color); }
-  used.set('0', 7); // 기본 레이어 0 항상 포함
+  return assembleDxf(ent, used);
+};
 
-  const out: string[] = [];
-  const o = (code: number, val: string | number) => { out.push(String(code), String(val)); };
-  // HEADER (R12 / AC1009)
-  o(0, 'SECTION'); o(2, 'HEADER');
-  o(9, '$ACADVER'); o(1, 'AC1009');
-  o(9, '$INSUNITS'); o(70, 4); // 4 = mm
-  o(0, 'ENDSEC');
-  // TABLES → LAYER
-  o(0, 'SECTION'); o(2, 'TABLES'); o(0, 'TABLE'); o(2, 'LAYER'); o(70, used.size);
-  for (const [name, color] of used) { o(0, 'LAYER'); o(2, name); o(70, 0); o(62, color); o(6, 'CONTINUOUS'); }
-  o(0, 'ENDTAB'); o(0, 'ENDSEC');
-  // ENTITIES
-  o(0, 'SECTION'); o(2, 'ENTITIES');
-  out.push(...ent);
-  o(0, 'ENDSEC'); o(0, 'EOF');
+// ── 정식 모델(월드 mm) 기반 DXF 내보내기 ────────────────────────
+// U3 편집(삭제/추가/두께·단면 수정)이 반영된 store.model 을 직접 소비한다.
+// 벽/보=축선 LINE, 기둥=회전 사각형 4 LINE, 그리드=축선 LINE. 좌표는 이미 월드 mm(Y 위).
+export const buildDxfFromModel = (model: FloorModel): string => {
+  const ent: string[] = [];
+  const e = (code: number, val: string | number) => { ent.push(String(code), String(val)); };
+  const used = new Map<string, number>();
+  const nodeById = new Map(model.nodes.map((n) => [n.id, n]));
+  const line = (ax: number, ay: number, bx: number, by: number, layer: string, color: number) => {
+    used.set(layer, color);
+    e(0, 'LINE'); e(8, layer);
+    e(10, fmt(ax)); e(20, fmt(ay)); e(30, '0.0');
+    e(11, fmt(bx)); e(21, fmt(by)); e(31, '0.0');
+  };
 
-  return out.join('\r\n') + '\r\n'; // 고전 DXF = CRLF
+  for (const w of model.walls) {
+    const a = nodeById.get(w.i), b = nodeById.get(w.j);
+    if (a && b) line(a.x, a.y, b.x, b.y, LAYERS.WALL.layer, LAYERS.WALL.color);
+  }
+  for (const bm of model.beams) {
+    const a = nodeById.get(bm.i), b = nodeById.get(bm.j);
+    if (a && b) line(a.x, a.y, b.x, b.y, LAYERS.BEAM.layer, LAYERS.BEAM.color);
+  }
+  for (const c of model.columns) {
+    const nd = nodeById.get(c.node); if (!nd) continue;
+    const hw = (c.width || 400) / 2, hh = (c.depth || 400) / 2;
+    // rotation_deg 은 화면(Y 아래) 기준 → 월드(Y 위)에선 부호 반전
+    const t = -(c.rotation || 0) * Math.PI / 180, co = Math.cos(t), si = Math.sin(t);
+    const corners = ([[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]] as const)
+      .map(([dx, dy]) => ({ x: nd.x + dx * co - dy * si, y: nd.y + dx * si + dy * co }));
+    for (let i = 0; i < 4; i++) {
+      const p = corners[i], q = corners[(i + 1) % 4];
+      line(p.x, p.y, q.x, q.y, LAYERS.COLUMN.layer, LAYERS.COLUMN.color);
+    }
+  }
+  // 그리드 축선 (bbox 범위로 연장)
+  if (model.bbox) {
+    const { minX, minY, maxX, maxY } = model.bbox;
+    for (const g of model.grid) {
+      if (g.dir === 'X') line(g.position, minY, g.position, maxY, LAYERS.CENTER_LINE.layer, LAYERS.CENTER_LINE.color);
+      else line(minX, g.position, maxX, g.position, LAYERS.CENTER_LINE.layer, LAYERS.CENTER_LINE.color);
+    }
+  }
+  return assembleDxf(ent, used);
 };

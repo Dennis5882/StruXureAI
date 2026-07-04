@@ -79,6 +79,8 @@ const DICT: Record<string, Record<Lang, string>> = {
   ckExtract:    { ko: '구조 모델 추출됨', en: 'Structure extracted', zh: '已擷取結構' },
   ckModel:      { ko: '절점 그래프 생성됨', en: 'Node graph built', zh: '已建立節點圖' },
   ckReady:      { ko: '아래에서 층수·층고·MAPI-Key 입력 후 전송', en: 'Enter stories/height/MAPI-Key below, then send', zh: '於下方輸入層數/層高/MAPI-Key 後傳送' },
+  exDxf:        { ko: 'DXF 내보내기', en: 'Export DXF', zh: '匯出 DXF' },
+  exDxfHint:    { ko: '편집 반영된 구조모델을 DXF(mm)로 저장', en: 'Save the edited model as DXF (mm)', zh: '將編輯後的模型存為 DXF (mm)' },
 };
 
 export function useNext() {
