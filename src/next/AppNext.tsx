@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import { Workspace } from '../components/Workspace';
 import { useDrawingStore } from '../store/useDrawingStore';
@@ -23,6 +23,7 @@ export const AppNext: React.FC = () => {
   // crop 범위는 store가 단일 출처 — 캔버스 CROP 모드와 미니맵이 공유, 파일 로드 시 자동 초기화.
   const cropBBox = useDrawingStore((s) => s.cropBBox);
   const setCropBBox = useDrawingStore((s) => s.setCropBBox);
+  const cropHintedRef = useRef(false); // 크롭 권유 힌트는 세션당 1회만
 
   // 캔버스에서 부재를 클릭해 선택하면(selectedMemberId 설정) 검토 탭을 자동으로 연다.
   const selectedMemberId = useDrawingStore((s) => s.selectedMemberId);
@@ -57,6 +58,13 @@ export const AppNext: React.FC = () => {
     st.setModel(model);
     st.setMode('SELECT');
     setTab('review'); // 추출 직후 자동으로 검토 패널 표시
+    // 스케일 과소(거대 미크롭 도면) 감지: 벽 대부분이 단일선 = 이중선 면쌍이 sub-pixel로 실패한 상태.
+    // → 한 층만 CROP하면 스케일이 살아나 두께/폭까지 정밀 추출됨을 안내(세션당 1회, 비차단).
+    const singleWalls = model.walls.filter((w) => w.singleLine).length;
+    if (!st.cropBBox && !cropHintedRef.current && model.walls.length >= 15 && singleWalls / model.walls.length > 0.85) {
+      cropHintedRef.current = true;
+      setTimeout(() => alert(n('cropHint')), 150);
+    }
   }, [profile, n, layerTypeOverrides, lineLayerIncludes]);
 
   return (

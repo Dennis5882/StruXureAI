@@ -37,6 +37,7 @@ const DICT: Record<string, Record<Lang, string>> = {
   noLayers:     { ko: '도면을 먼저 열어 주세요.\n(CAD 버튼)', en: 'Open a drawing first.\n(CAD button)', zh: '請先開啟圖面。\n（CAD 按鈕）' },
   loadFirst:    { ko: '먼저 DWG/DXF 를 여세요.', en: 'Open a DWG/DXF first.', zh: '請先開啟 DWG/DXF。' },
   noStruct:     { ko: '구조 부재를 찾지 못했습니다. 보이는 레이어를 확인하세요.', en: 'No members found. Check visible layers.', zh: '未找到構件，請檢查可見圖層。' },
+  cropHint:     { ko: '도면이 커서 벽·보를 정밀하게 추출하지 못했습니다(대부분 단선 처리). 상단 CROP으로 한 층(평면)만 선택한 뒤 다시 추출하면 두께·폭까지 정확해집니다.', en: 'The drawing is large, so walls/beams were extracted coarsely (mostly single-line). Use CROP to select one floor plan, then extract again for accurate thickness/width.', zh: '圖面過大，牆／梁僅粗略擷取（多為單線）。請用上方 CROP 框選單一樓層平面後重新擷取，即可取得精確厚度／寬度。' },
 
   // 검토 탭 — 품질
   qTitle:       { ko: '추출 품질', en: 'Extraction quality', zh: '擷取品質' },
