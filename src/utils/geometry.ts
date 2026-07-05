@@ -98,6 +98,10 @@ export const minAreaRect = (
 export const classifyLayer = (name: string): StructureType | null => {
   const u = (name || '').toUpperCase();
   if (/MASONRY|조적|벽돌|BRICK|磚|砌/.test(u)) return null;
+  // 부정 키워드: 철근/치수/주석/해치/표제란/상세도 등 = 도형이 아닌 레이어. 부재 키워드보다 먼저 판정해
+  //   柱钢筋(기둥철근)·柱尺寸(치수)·墙编号(벽번호)·梁集中标注(보주석) 같은 파생 레이어가 부재로 오분류되는 것 방지.
+  //   (중국 시공도 세트는 한 도면에 철근도·상세도·표까지 섞여 있어 이 필터가 노이즈를 크게 줄임)
+  if (/钢筋|鋼筋|配筋|筋|尺寸|标注|標註|标高|標高|文字|文本|中文|说明|說明|编号|編號|符号|符號|图号|圖號|图签|圖簽|图名|圖名|签名|簽名|填充|详图|詳圖|虚线|虛線|洞|钢筋表|表|철근|치수|문자|텍스트|해치|HATCH|\bTEXT\b|TEXT$|\bDIM\b|DIM_|\bNUM\b|NUM_|REIN|REBAR|DOTE|ELEV/.test(u)) return null;
   if (/COL|기둥|柱/.test(u)) return 'COLUMN';
   if (/BEAM|GIRDER|보|梁|桁|大梁|小梁/.test(u)) return 'BEAM'; // 벽보다 먼저(RC_BEAM 등이 WALL로 오분류 방지)
   if (/WALL|옹벽|벽|墙|牆|RC|SHEAR/.test(u)) return 'WALL';

@@ -1,6 +1,7 @@
 // @ts-ignore
 import DxfParser from 'dxf-parser';
 import { useDrawingStore } from '../store/useDrawingStore';
+import { decodeDxfBytes } from './decodeDxf';
 
 // AutoCAD Color Index → HEX 변환 (자주 쓰이는 색만 매핑, 그 외는 기본 회색)
 const aciToHex: Record<number, string> = {
@@ -190,7 +191,7 @@ const convertDwgToDxf = async (buffer: ArrayBuffer): Promise<string> => {
     const lib = await LibreDwg.create();
     const dxfBytes = lib.dwg_write_dxf(buffer);
     if (!dxfBytes) throw new Error('DWG → DXF 변환 실패');
-    return new TextDecoder('utf-8').decode(dxfBytes as any);
+    return decodeDxfBytes(dxfBytes as Uint8Array); // 코드페이지 자동 판별(GBK/Big5 등)
   } finally {
     clearInterval(iv);
   }

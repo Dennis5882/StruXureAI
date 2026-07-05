@@ -64,9 +64,12 @@ export const LayersTab: React.FC<Props> = ({ onExtract, profile, setProfile, lay
     return map;
   }, [dxfEntities]);
 
+  // 부재 분류(classifyLayer)와 동일 로직 재사용 → 관례(영/한/중·번체)·부정 키워드가 자동 일관.
+  // 하드코딩 키워드('COL' 등)는 중국 도면의 한자 레이어(砼柱/柱/砼墙)를 못 잡고 철근(WCOL_REIND)만 켜는 버그가 있었음.
+  // 축/통심선 레이어(AXIS/轴/通)는 그리드 표시에 유용하므로 함께 켠다.
+  const isAxis = (name: string) => /AXIS|AXN|GRID|CEN|축|통|軸|通|轴/i.test(name || '');
   const autoFilter = () => {
-    const kw = ['S-', 'COL', 'WALL', 'CONC', '기둥', '옹벽'];
-    setDxfLayers(dxfLayers.map((l) => ({ ...l, visible: kw.some((k) => l.name.toUpperCase().includes(k)) })));
+    setDxfLayers(dxfLayers.map((l) => ({ ...l, visible: classifyLayer(l.name) !== null || isAxis(l.name) })));
   };
 
   return (
