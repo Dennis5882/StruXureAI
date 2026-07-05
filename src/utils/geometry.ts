@@ -102,13 +102,14 @@ export const classifyLayer = (name: string): StructureType | null => {
   //   柱钢筋(기둥철근)·柱尺寸(치수)·墙编号(벽번호)·梁集中标注(보주석) 같은 파생 레이어가 부재로 오분류되는 것 방지.
   //   (중국 시공도 세트는 한 도면에 철근도·상세도·표까지 섞여 있어 이 필터가 노이즈를 크게 줄임)
   if (/钢筋|鋼筋|配筋|筋|尺寸|标注|標註|标高|標高|文字|文本|中文|说明|說明|编号|編號|符号|符號|图号|圖號|图签|圖簽|图名|圖名|签名|簽名|填充|详图|詳圖|虚线|虛線|洞|钢筋表|表|철근|치수|문자|텍스트|해치|HATCH|\bTEXT\b|TEXT$|\bDIM\b|DIM_|\bNUM\b|NUM_|REIN|REBAR|DOTE|ELEV/.test(u)) return null;
-  if (/COL|기둥|柱/.test(u)) return 'COLUMN';
+  // 边缘构件/約束邊緣 = 전단벽 단부기둥(concealed/boundary column) → 기둥으로 취급(暗柱은 柱로 이미 매칭).
+  if (/COL|기둥|柱|边缘构件|邊緣構件|約束邊緣|约束边缘/.test(u)) return 'COLUMN';
   if (/BEAM|GIRDER|보|梁|桁|大梁|小梁/.test(u)) return 'BEAM'; // 벽보다 먼저(RC_BEAM 등이 WALL로 오분류 방지)
   if (/WALL|옹벽|벽|墙|牆|RC|SHEAR/.test(u)) return 'WALL';
   return null;
 };
-// 통심선(축/그리드) 레이어 — CEN(centerline), 통심선/通芯/通り芯 등 관례 포함
-const isAxisLayer = (name: string): boolean => /AXIS|AXN|GRID|CEN|축|통|軸|通/i.test(name || '');
+// 통심선(축/그리드) 레이어 — CEN(centerline), 통심선/通芯/通り芯 등 관례 포함. 轴=간체·軸=번체 모두.
+const isAxisLayer = (name: string): boolean => /AXIS|AXN|GRID|CEN|축|통|軸|轴|通|网/i.test(name || '');
 // 축 버블(통심부호) 레이어
 const isBubbleLayer = (name: string): boolean => /BUBBLE|버블|통.?부호|軸符|通り符/i.test(name || '');
 const cleanText = (s: string): string => (s || '').replace(/\\[A-Za-z][^;]*;|[{}]/g, '').trim();
@@ -131,8 +132,9 @@ const extractGrid = (entities: any[], tx: (x: number) => number, ty: (y: number)
     const a = { x: tx(v[0].x), y: ty(v[0].y) };
     const b = { x: tx(v[v.length - 1].x), y: ty(v[v.length - 1].y) };
     const dx = Math.abs(a.x - b.x), dy = Math.abs(a.y - b.y);
-    if (dx < 2 && dy > 20) xs.push((a.x + b.x) / 2);        // 수직 축선 → x 격자
-    else if (dy < 2 && dx > 20) ys.push((a.y + b.y) / 2);   // 수평 축선 → y 격자
+    // 최소 길이 10px: 거대 도면 전체를 캔버스에 맞추면 축선이 짧아져 과거 임계(20)에 걸려 그리드가 0이 되던 문제 완화.
+    if (dx < 2 && dy > 10) xs.push((a.x + b.x) / 2);        // 수직 축선 → x 격자
+    else if (dy < 2 && dx > 10) ys.push((a.y + b.y) / 2);   // 수평 축선 → y 격자
   }
   return { xs: clusterValues(xs, 4), ys: clusterValues(ys, 4) };
 };
@@ -576,7 +578,10 @@ export const extractStructuralModel = (
     singleLine++;
   }
   let unpaired = wp.unpaired - singleLine;
-  const wallAxes = mergeCollinearLines(rawAxes, Math.max(4, maxPx * 0.5), Math.max(30, maxPx * 8));
+  // 병합 갭에 월드(mm) 상한: 작은 scale(거대 도면)에서 px 바닥값(30)이 수십~수백 m로 폭주해
+  //   평면 간 동일선상 조각들이 하나로 병합되던 문제 방지. 정상 스케일에선 좌측값이 작아 상한 미적용(무회귀).
+  const gapCap = 20000 * scale; // 20m 초과 갭은 같은 부재로 안 봄
+  const wallAxes = mergeCollinearLines(rawAxes, Math.max(4, maxPx * 0.5), Math.min(Math.max(30, maxPx * 8), gapCap));
 
   // 보: 이중선(면쌍)→축선+폭, 짝 없는 보선→단일 중심선(플래그). 보 폭 범위는 벽보다 넓게.
   const beamMinPx = (opts?.beamMinMm ?? 150) * scale;
@@ -597,7 +602,7 @@ export const extractStructuralModel = (
       thickness: 2, properties: { fromCad: true, isAxis: true, singleLine: true },
     });
   }
-  const beams = rawBeams.length ? mergeCollinearLines(rawBeams, Math.max(4, beamMaxPx * 0.5), Math.max(30, beamMaxPx * 8)) : [];
+  const beams = rawBeams.length ? mergeCollinearLines(rawBeams, Math.max(4, beamMaxPx * 0.5), Math.min(Math.max(30, beamMaxPx * 8), gapCap)) : [];
 
   // 두께 양자화(프리셋): 측정값을 지역 표준치로 스냅. 원본은 *_measured_mm 로 보존. (raw면 끔)
   const profile = opts?.thicknessProfile ?? 'raw';
@@ -625,8 +630,18 @@ export const extractStructuralModel = (
     if (xpos.length) { const n = nearest(c.cx, xpos); if (n.dist <= SNAP) c.cx = n.val; }
     if (ypos.length) { const n = nearest(c.cy, ypos); if (n.dist <= SNAP) c.cy = n.val; }
   }
+  // 기둥 타당성 필터: 벽구간·철근·치수선이 기둥으로 오인되는 것 차단. 단면(mm)으로 판정.
+  //   · 최대변 > 3000mm = 기둥이 아니라 벽/전단벽 구간(边缘构件의 긴 것, tracing 800x4200 등)
+  //   · 종횡비 > 6 = 가늘고 긴 선형 = 기둥 아님
+  //   · 최소변 < 50mm = 단선/철근 조각 노이즈
+  const plausibleCol = (c: { w: number; h: number }): boolean => {
+    const wmm = toMm(c.w), hmm = toMm(c.h);
+    const lo = Math.min(wmm, hmm), hi = Math.max(wmm, hmm);
+    return hi <= 3000 && lo >= 50 && hi / Math.max(lo, 1) <= 6;
+  };
   const kept: Col[] = [];
   for (const c of cols) {
+    if (!plausibleCol(c)) continue;
     const dup = kept.find((k) => Math.hypot(k.cx - c.cx, k.cy - c.cy) <= DEDUP);
     if (dup) { dup.w = Math.max(dup.w, c.w); dup.h = Math.max(dup.h, c.h); }
     else kept.push({ ...c });
