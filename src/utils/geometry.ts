@@ -593,13 +593,19 @@ export const extractStructuralModel = (
     coordinates: [ax.p1, ax.p2],
     thickness: 2, properties: { fromCad: true, isAxis: true, width_mm: round5(toMm(ax.thickPx)) },
   }));
+  // 단일선 보의 폭 기본값 = 이 도면에서 실측된 이중선 보 폭의 중앙값(없으면 300).
+  //   고정 300 대신 도면 실제 보 크기에 맞춰 추정 → 스팬 폭 일관성↑ (벽의 medThickPx와 동일 접근).
+  const medBeamWidthMm = (() => {
+    const v = bp.axes.map((a) => toMm(a.thickPx)).sort((a, b) => a - b);
+    return v.length ? round5(v[Math.floor(v.length / 2)]) : 300;
+  })();
   for (let i = 0; i < beamFacesM.length; i++) {
     if (bp.used.has(i)) continue; // 단일선 보 = 중심선 직접 사용
     const F = beamFacesM[i];
     rawBeams.push({
       id: nid('beam'), source: 'CAD', type: 'BEAM', shape: 'line',
       coordinates: [F.a, F.b],
-      thickness: 2, properties: { fromCad: true, isAxis: true, singleLine: true },
+      thickness: 2, properties: { fromCad: true, isAxis: true, singleLine: true, width_mm: medBeamWidthMm, widthEstimated: true },
     });
   }
   const beams = rawBeams.length ? mergeCollinearLines(rawBeams, Math.max(4, beamMaxPx * 0.5), Math.min(Math.max(30, beamMaxPx * 8), gapCap)) : [];

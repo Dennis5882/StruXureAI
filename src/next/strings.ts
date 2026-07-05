@@ -38,6 +38,8 @@ const DICT: Record<string, Record<Lang, string>> = {
   loadFirst:    { ko: '먼저 DWG/DXF 를 여세요.', en: 'Open a DWG/DXF first.', zh: '請先開啟 DWG/DXF。' },
   noStruct:     { ko: '구조 부재를 찾지 못했습니다. 보이는 레이어를 확인하세요.', en: 'No members found. Check visible layers.', zh: '未找到構件，請檢查可見圖層。' },
   cropHint:     { ko: '도면이 커서 벽·보를 정밀하게 추출하지 못했습니다(대부분 단선 처리). 상단 CROP으로 한 층(평면)만 선택한 뒤 다시 추출하면 두께·폭까지 정확해집니다.', en: 'The drawing is large, so walls/beams were extracted coarsely (mostly single-line). Use CROP to select one floor plan, then extract again for accurate thickness/width.', zh: '圖面過大，牆／梁僅粗略擷取（多為單線）。請用上方 CROP 框選單一樓層平面後重新擷取，即可取得精確厚度／寬度。' },
+  cropBigTitle: { ko: '큰 도면입니다 (여러 평면 포함 가능)', en: 'Large drawing (may contain several plans)', zh: '圖面很大（可能含多張平面）' },
+  cropBigBody:  { ko: '한 층(평면)만 선택하면 그 영역이 확대되어 벽 두께·보 폭·보-기둥 연결까지 정밀하게 추출됩니다.', en: 'Select one floor plan — it zooms in so walls, beam widths and beam–column links extract precisely.', zh: '框選單一樓層平面後會放大該區，牆厚、梁寬與梁柱連接皆可精確擷取。' },
 
   // 검토 탭 — 품질
   qTitle:       { ko: '추출 품질', en: 'Extraction quality', zh: '擷取品質' },

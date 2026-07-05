@@ -1,6 +1,7 @@
 import React, { useRef, useState, useMemo, useCallback } from 'react';
-import { CropIcon, RotateCcw, MousePointerSquareDashed } from 'lucide-react';
+import { CropIcon, RotateCcw, MousePointerSquareDashed, Lightbulb } from 'lucide-react';
 import { useDrawingStore } from '../store/useDrawingStore';
+import { useNext } from './strings';
 
 export interface CropBBox {
   minX: number; minY: number; maxX: number; maxY: number; // DXF world coords
@@ -38,6 +39,7 @@ export const filterEntitiesByCrop = (entities: any[], bbox: CropBBox | null): an
 };
 
 export const CropPanel: React.FC<Props> = ({ cropBBox, setCropBBox }) => {
+  const { n } = useNext();
   const dxfEntities = useDrawingStore((s) => s.dxfEntities);
   const currentMode = useDrawingStore((s) => s.currentMode);
   const setMode = useDrawingStore((s) => s.setMode);
@@ -199,6 +201,17 @@ export const CropPanel: React.FC<Props> = ({ cropBBox, setCropBBox }) => {
           )}
         </div>
       </div>
+
+      {/* 큰 도면 안내 — 여러 평면이 섞인 대형 세트는 한 층만 크롭해야 정밀 추출됨 */}
+      {worldExt && !cropBBox && (Math.max(worldExt.w, worldExt.h) > 300000) && (
+        <div className="mx-2 mt-2 flex gap-1.5 items-start rounded bg-amber-500/10 border border-amber-500/30 px-2 py-1.5">
+          <Lightbulb size={13} className="text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-[10px] leading-snug">
+            <div className="text-amber-300 font-medium">{n('cropBigTitle')}</div>
+            <div className="text-amber-200/70 mt-0.5">{n('cropBigBody')}</div>
+          </div>
+        </div>
+      )}
 
       {/* 도면에서 직접 선택 — 주 동작 (미니맵은 보조) */}
       <div className="px-2 pt-2">
