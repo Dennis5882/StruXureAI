@@ -57,8 +57,10 @@ export const buildStructuralModel = (
         lineId: m.id,
       });
     } else if (m.type === 'WALL' && m.shape === 'line') {
+      const ni = nodeId(a), nj = nodeId(b);
+      if (ni === nj) continue; // 두 끝점이 같은 절점으로 병합 = 퇴화 부재(길이0) → 제외
       walls.push({
-        id: `W${++wId}`, i: nodeId(a), j: nodeId(b),
+        id: `W${++wId}`, i: ni, j: nj,
         thickness: Math.round(m.properties?.thickness_mm ?? 200),
         thicknessMeasured: m.properties?.thickness_measured_mm,
         gridLine: m.properties?.gridLine,
@@ -66,8 +68,10 @@ export const buildStructuralModel = (
         lineId: m.id,
       });
     } else if (m.type === 'BEAM' && m.shape === 'line') {
+      const ni = nodeId(a), nj = nodeId(b);
+      if (ni === nj) continue; // 길이0 보(분할 슬리버 등) 제외 → MIDAS 내보내기 오류 방지
       beams.push({
-        id: `B${++bId}`, i: nodeId(a), j: nodeId(b),
+        id: `B${++bId}`, i: ni, j: nj,
         width: Math.round(m.properties?.width_mm ?? 300),
         singleLine: !!m.properties?.singleLine,
         lineId: m.id,
