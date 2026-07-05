@@ -128,6 +128,10 @@ const parseDxfText = async (text: string) => {
     }
   });
 
+  // 엔티티가 하나도 없으면 = 지원 안 되는 오래된 DWG 버전(예: R10 AC1006)이거나 손상.
+  // 리셋 '전에' 던져서 직전 도면 상태를 보존한다(빈 도면으로 덮어쓰지 않음).
+  if (entities.length === 0) throw new Error('NO_ENTITIES');
+
   store.setLoadingProgress(0.93, '레이어 정리·렌더 중…'); await paintYield();
   // 새 파일 로드 전, 직전 파일에서 추출된 구조모델/부재/뷰포트를 초기화한다.
   // (이걸 안 하면 이전 도면의 그리드 라벨·기둥이 새 도면 위에 겹쳐 보인다)
@@ -149,7 +153,10 @@ const loadDxf = async (file: File) => {
     const text = await file.text();
     await parseDxfText(text);
   } catch (err) {
-    alert('DXF 파일을 읽는 데 실패했습니다.');
+    const msg = String((err as any)?.message || err);
+    alert(/NO_ENTITIES/.test(msg)
+      ? '이 DXF에서 도형을 읽지 못했습니다. 빈 도면이거나 지원되지 않는 형식일 수 있습니다.'
+      : 'DXF 파일을 읽는 데 실패했습니다.');
   } finally {
     store.setLoadingFile(false);
   }
@@ -189,12 +196,24 @@ const convertDwgToDxf = async (buffer: ArrayBuffer): Promise<string> => {
   }
 };
 
+// DWG 헤더(첫 6바이트, 예: "AC1024")를 사람이 읽는 버전으로 매핑. libredwg는 AC1015(2000) 미만은 불안정.
+const DWG_VER: Record<string, string> = {
+  AC1006: 'R10 (1988)', AC1009: 'R11/12', AC1012: 'R13', AC1014: 'R14',
+  AC1015: '2000', AC1018: '2004', AC1021: '2007', AC1024: '2010', AC1027: '2013', AC1032: '2018',
+};
+const dwgVersion = (buffer: ArrayBuffer): { code: string; label?: string; old: boolean } => {
+  const code = new TextDecoder('latin1').decode(new Uint8Array(buffer, 0, 6));
+  return { code, label: DWG_VER[code], old: code < 'AC1015' };
+};
+
 const loadDwg = async (file: File) => {
   const store = useDrawingStore.getState();
   store.setLoadingFile(true, '파일 읽는 중…');
+  let ver: ReturnType<typeof dwgVersion> | null = null;
   try {
     store.setLoadingProgress(0.05, '파일 읽는 중…'); await paintYield();
     const buffer = await file.arrayBuffer();
+    ver = dwgVersion(buffer);
     // DWG→DXF 변환(수 초, 동기 블록)은 워커로 격리 → 변환 중에도 UI 반응.
     store.setLoadingProgress(0.3, 'DWG→DXF 변환 중…'); await paintYield();
     const text = await convertDwgToDxf(buffer);
@@ -203,10 +222,13 @@ const loadDwg = async (file: File) => {
     console.error('[StruXureAI] DWG 로드 실패', err);
     // 동적 import(청크) 로드 실패 = 새 배포 후 예전 페이지에 남은 경우 → 새로고침 안내
     const msg = String((err as any)?.message || err);
+    const verTxt = ver?.label ? `AutoCAD ${ver.label}` : (ver?.code || '알 수 없는 버전');
     if (/dynamically imported module|Failed to fetch|importing|chunk|preload/i.test(msg)) {
       alert('새 버전이 배포되어 변환 모듈을 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.');
+    } else if (ver?.old || /NO_ENTITIES/.test(msg)) {
+      alert(`이 DWG에서 도형을 읽지 못했습니다. 버전: ${verTxt}. 너무 오래된 형식은 지원되지 않습니다 — AutoCAD 2000 이상 형식(또는 DXF)으로 저장해 다시 시도해주세요.`);
     } else {
-      alert('DWG 파일을 여는 데 실패했습니다. (지원되지 않는 버전이거나 손상된 파일일 수 있습니다)');
+      alert(`DWG 파일을 여는 데 실패했습니다. (버전: ${verTxt} — 지원되지 않는 버전이거나 손상된 파일일 수 있습니다)`);
     }
   } finally {
     store.setLoadingFile(false);

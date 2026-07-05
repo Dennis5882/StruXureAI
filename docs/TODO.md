@@ -1,7 +1,7 @@
 # StruXureAI — 진행상황 & 앞으로 할 일 (통합 기록)
 
 > 이 문서는 작업 핸드오프용 단일 기록. 대화가 압축돼도 여기서 맥락을 복구한다.
-> 기준 버전: **v0.32.1** · 갱신: 2026-07-04 · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 기준 버전: **v0.33.0** · 갱신: 2026-07-05 · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 🌟 북극성: **구조 평면도를 제대로 만들기 + 그 이후를 위한 기반 다지기** (추출 정확도·데이터 기반 우선; 해석/AI는 그 위에)
 > 함께 보기: [ROADMAP.md](./ROADMAP.md)(단계별 로드맵·추천경로) · [STRUCTURAL_MODEL.md](./STRUCTURAL_MODEL.md)(정밀추출 설계) · [MODULES.md](./MODULES.md)(OSS 조사)
 
@@ -49,7 +49,7 @@
 - (이번 세션 추가) 재로드/재추출 겹침 수정(`clearCadLines`), 캔버스 CROP 모드(도면에서 직접 범위 선택), 언어 드롭다운, CTA 정리(추출만).
 - **성능: DXF 정적 배경 렌더링(v0.31.1)** — DXF 엔티티를 Fabric 객체 수만 개 대신 레이어별 Path2D로 배경 캔버스에 한 번에 stroke(뷰포트 동기 `after:render`). tracing 68k에서 fabric 객체 3만→0, 줌/팬 버벅임 해소. 구조부재/오버레이만 Fabric 유지.
 - **성능/UX: 파일 열기 진행률 바(v0.31.2) + DWG→DXF Web Worker 변환(v0.31.3)** — `src/workers/dwgWorker.ts`로 변환을 메인 스레드 밖으로 격리(실패 시 메인 폴백). 변환 중 UI 안 멈춤(메인 응답 <50ms), 바 크립 30→58%. 단계별 진행률(파일읽기→모듈→변환→파싱→전개→완료). (남은 부하: DXF 파싱 parseSync는 아직 메인 — 필요 시 워커화.)
-- **C1 실도면 일반성** (⚠️ B1F 외 다른 DWG 필요 — 사용자 제공): 레이어 수동 지정 기능 추가됨으로 다른 관례 도면도 대응 가능. 새 도면 제공 시 테스트 바로 가능.
+- **C1 실도면 일반성** 🟢 **1차 검증·수정 완료(v0.33.0)** — 중국법인 제공 실도면(PKPM/YJK 관례, `dwg sample/zg test.2.dwg`·`zg test2.dxf`, AC1024)으로 검증. 레이어명(COLU/COLU_BR/WALL/BEAM/AXIS)은 `classifyLayer` 정규식이 그대로 커버. **버그 발견·수정**: 기둥이 닫힌 폴리라인이 아니라 **개별 LINE 4개**(COLU_BR)로 그려진 경우 기둥 0개 추출 → COLUMN 분류 레이어의 LINE을 **자동 클러스터링**(수동 토글 없이, 명시적 off만 제외)하도록 `extractStructuralModel` 수정. 결과: 기둥 18개(부호 18개 일치)·단면 800×800·gridRef 18/18·벽 16·두께 250mm. B1F 무회귀(60기둥·자유단 61→21 동일). **구버전 DWG UX**: 로드 후 엔티티 0이면 헤더 버전(AC1006=R10 등) 읽어 명확히 안내(+직전 도면 보존). ⚠️ 남음: 보(BEAM) 실검증(보 레이어 있는 도면 필요), 더 복잡한 평면.
 - **B1 다층**(다중 DWG→BuildingModel): 🟡 **Phase1~2 완료(v0.31.0)** — 스냅샷 방식 층 수집(`floors[]`, 저장/레벨·층고·층명 편집/삭제, FloorsPanel), **다층 MIDAS 전송**(`buildMidasRequestsBuilding`, 각 층 elevation~+height 배치, 절점 월드(x,y,z) 병합→경계층 절점 공유=기둥 연속). B1F×2 검증: z{0,3000,6000} 각 145절점(경계 병합), 기둥100·벽142. **남음**: 층별 다른 평면 로드(현재는 같은 DWG 재추출로 층 저장), Phase3 빌딩 DXF(3D).
 - ~~**B2 Story Data(STRY) 등록**~~ ✅ **완료(v0.32.0)** — `storyRequest`로 `/db/STOR` 추가(공식 스키마: STORY_NAME/LEVEL/bFLOOR_DIAPHRAGM + 층폭 bbox 기하, 하중·지진 편심은 중립 0/1=Gen NX 몫). **빌딩 DXF 3D**(`buildBuildingDxf`: 기둥 수직·벽/보 층레벨 수평, z 포함) + 내보내기 탭 버튼. B1F×2 검증: STOR 2층·DXF z{0,3000,6000}. **남음**: A4 다층 라이브 재전송(Gen NX 재연결 필요), 층별 다른 평면 실검증(다층 DWG 세트 필요).
 - ~~핸드오프 다듬기: **dxfExport도 model 소비**~~ ✅ **완료(v0.30.1)** — `buildDxfFromModel(model)`(월드 mm, 벽/보 축선·기둥 회전사각·그리드 축선). 내보내기 탭에 DXF 버튼 추가, Toolbar도 model 우선. B1F 검증: LINE 285=벽71+기둥49×4+그리드18, 편집(삭제/두께) 반영.

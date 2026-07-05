@@ -455,15 +455,20 @@ export const extractStructuralModel = (
     }
   }
 
-  // LINE 엔티티 클러스터링 — 사용자가 "LINE도 기둥으로 처리" 승인한 레이어 전용.
-  // 일부 DWG는 기둥을 닫힌 LWPOLYLINE 대신 LINE 여러 개로 표현함.
+  // LINE 엔티티 클러스터링 — 일부 DWG는 기둥을 닫힌 LWPOLYLINE 대신 LINE 여러 개로 표현함.
   // 끝점이 가까운 LINE들을 연결 컴포넌트로 묶고 전체 꼭짓점에 minAreaRect 적용.
-  for (const [layerName, included] of Object.entries(lineIncludes)) {
-    if (!included) continue;
-    const cls = resolveLayer(layerName);
-    if (cls !== 'COLUMN') continue; // 현재는 기둥만 지원
-    if (visible.get(layerName) === false) continue;
-
+  // 기둥으로 분류된 레이어에 LINE 엔티티가 있으면 자동 클러스터링(중국 PKPM/YJK 관례: COLU_BR 등 4선 사각형 기둥).
+  // 닫힌 폴리라인 기둥은 위 메인 루프에서 이미 rect로 처리됨 → 여기선 LINE만 대상이라 중복 없음.
+  // 사용자가 명시적으로 끈 레이어(lineIncludes[layer]===false)만 제외.
+  const colLineLayers = new Set<string>();
+  for (const e of entities) {
+    if ((e.type || '').toUpperCase() !== 'LINE') continue;
+    if (resolveLayer(e.layer) !== 'COLUMN') continue;
+    if (visible.get(e.layer) === false) continue;
+    if (lineIncludes[e.layer] === false) continue;
+    colLineLayers.add(e.layer);
+  }
+  for (const layerName of colLineLayers) {
     const lineEnts = entities.filter((e) => e.layer === layerName && (e.type || '').toUpperCase() === 'LINE' && Array.isArray(e.vertices) && e.vertices.length >= 2);
     if (!lineEnts.length) continue;
 
