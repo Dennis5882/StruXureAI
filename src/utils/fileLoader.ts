@@ -140,6 +140,9 @@ const parseDxfText = async (text: string) => {
   store.clearLines();
   store.resetViewport();
   store.setCropBBox(null);
+  // 축척 판정은 도면마다 다시 한다 — 이전 도면의 사용자 오버라이드가 남으면 조용히 잘못 적용된다.
+  store.setScaleInfo(null);
+  store.setScaleOverride(null);
   store.setDxfLayers(layers);
   store.setDxfEntities(entities);
   if (!store.isSidebarOpen) store.toggleSidebar();

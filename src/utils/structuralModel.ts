@@ -5,14 +5,22 @@ import { FloorModel, SNode, SColumn, SWall, SBeam, SGridAxis, Vec2 } from '../ty
 
 // ── 좌표 가교 유틸 (단일 출처) ──────────────────────────────
 // 캔버스 px ↔ 월드 mm. 변환은 반드시 여기로 통일(설계서 §2).
-export const canvasToWorld = (p: Point2D, t: DxfTransform): Vec2 => ({
-  x: t.minX + (p.x - t.pad) / t.scale,
-  y: t.maxY - (p.y - t.pad) / t.scale, // DXF Y는 위로
-});
-export const worldToCanvas = (v: Vec2, t: DxfTransform): Point2D => ({
-  x: t.pad + (v.x - t.minX) * t.scale,
-  y: t.pad + (t.maxY - v.y) * t.scale,
-});
+// t.minX/maxY/scale은 '도면 단위' 기준이므로, 월드 mm는 unitMm을 곱해서 얻는다.
+// (unitMm=1이면 종전과 완전히 동일 — 도면이 1:1 mm인 정상 케이스)
+export const canvasToWorld = (p: Point2D, t: DxfTransform): Vec2 => {
+  const u = t.unitMm ?? 1;
+  return {
+    x: (t.minX + (p.x - t.pad) / t.scale) * u,
+    y: (t.maxY - (p.y - t.pad) / t.scale) * u, // DXF Y는 위로
+  };
+};
+export const worldToCanvas = (v: Vec2, t: DxfTransform): Point2D => {
+  const u = t.unitMm ?? 1;
+  return {
+    x: t.pad + (v.x / u - t.minX) * t.scale,
+    y: t.pad + (t.maxY - v.y / u) * t.scale,
+  };
+};
 
 /**
  * 추출된 구조부재(캔버스 px) + 그리드 → 정식 FloorModel(월드 mm, 절점-부재 그래프).

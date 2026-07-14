@@ -1,5 +1,5 @@
 import React, { useRef, useState, useMemo, useCallback } from 'react';
-import { CropIcon, RotateCcw, MousePointerSquareDashed, Lightbulb } from 'lucide-react';
+import { CropIcon, RotateCcw, MousePointerSquareDashed, Lightbulb, Ruler } from 'lucide-react';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { useNext } from './strings';
 
@@ -41,6 +41,9 @@ export const filterEntitiesByCrop = (entities: any[], bbox: CropBBox | null): an
 export const CropPanel: React.FC<Props> = ({ cropBBox, setCropBBox }) => {
   const { n } = useNext();
   const dxfEntities = useDrawingStore((s) => s.dxfEntities);
+  const scaleInfo = useDrawingStore((s) => s.scaleInfo);
+  const scaleOverride = useDrawingStore((s) => s.scaleOverride);
+  const setScaleOverride = useDrawingStore((s) => s.setScaleOverride);
   const currentMode = useDrawingStore((s) => s.currentMode);
   const setMode = useDrawingStore((s) => s.setMode);
   const cropActive = currentMode === 'CROP';
@@ -210,6 +213,38 @@ export const CropPanel: React.FC<Props> = ({ cropBBox, setCropBBox }) => {
             <div className="text-amber-300 font-medium">{n('cropBigTitle')}</div>
             <div className="text-amber-200/70 mt-0.5">{n('cropBigBody')}</div>
           </div>
+        </div>
+      )}
+
+      {/* 축척 자동 보정 — 도면이 참값의 N배로 그려진 경우(DIMLFAC) 치수문자로 판정해 알린다.
+          보정을 조용히 적용하면 모델 전체 크기가 바뀌므로 근거와 끄기를 항상 노출한다. */}
+      {scaleInfo && !scaleInfo.reject && scaleInfo.factor !== 1 && (
+        <div className="mx-2 mt-2 rounded bg-sky-500/10 border border-sky-500/30 px-2 py-1.5">
+          <div className="flex gap-1.5 items-start">
+            <Ruler size={13} className="text-sky-400 shrink-0 mt-0.5" />
+            <div className="text-[10px] leading-snug flex-1">
+              <div className="text-sky-300 font-medium">
+                {n('scTitle')}
+                <span className="ml-1 text-sky-200/60">{scaleOverride ? '· OFF' : `· ÷${scaleInfo.factor}`}</span>
+              </div>
+              <div className="text-sky-200/70 mt-0.5">{n('scBody').replace('{f}', String(scaleInfo.factor))}</div>
+              <div className="text-sky-200/45 mt-0.5">
+                {n('scEvid').replace('{a}', String(scaleInfo.agree)).replace('{c}', String(scaleInfo.chains)).replace('{p}', String(scaleInfo.pairs))}
+              </div>
+              <button
+                onClick={() => setScaleOverride(scaleOverride ? null : 1)}
+                className="mt-1 text-[10px] text-sky-300/80 hover:text-sky-200 underline underline-offset-2"
+              >
+                {scaleOverride ? n('scOn').replace('{f}', String(scaleInfo.factor)) : n('scOff')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {scaleInfo?.reject === 'low-confidence' && (
+        <div className="mx-2 mt-2 flex gap-1.5 items-start rounded bg-zinc-500/10 border border-zinc-600/40 px-2 py-1.5">
+          <Ruler size={13} className="text-zinc-400 shrink-0 mt-0.5" />
+          <div className="text-[10px] leading-snug text-zinc-400">{n('scMixed')}</div>
         </div>
       )}
 

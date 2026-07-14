@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as fabric from 'fabric';
-import { useDrawingStore } from '../store/useDrawingStore';
+import { useDrawingStore, effectiveScaleFactor } from '../store/useDrawingStore';
+import { analyzeDrawingScale, type ScaleAnalysis } from '../utils/drawingScale';
 import { loadFiles } from '../utils/fileLoader';
 import { Point2D } from '../types/drawing';
 import { useT } from '../i18n';
@@ -77,8 +78,11 @@ export const Workspace: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [resizeTick, setResizeTick] = useState(0); // 영역 크기 변화 시 도면 재맞춤 트리거
 
-  const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale, isLoadingFile, loadingMessage, loadingProgress, gridSize, cropBBox, model, selectedMemberId } = useDrawingStore();
+  const { currentMode, lines, undoLine, backgroundImage, dxfEntities, dxfLayers, aiPolygons, bgScale, setBgScale, isLoadingFile, loadingMessage, loadingProgress, gridSize, cropBBox, model, selectedMemberId, scaleOverride } = useDrawingStore();
   const { t } = useT();
+
+  // 축척 판정 캐시 — (엔티티, crop)이 그대로면 리사이즈마다 20만개를 다시 훑지 않는다.
+  const scaleRef = useRef<{ entities: any[]; key: string; info: ScaleAnalysis | null } | null>(null);
 
   // ⌨️ 단축키: Ctrl+Z 실행취소 · Delete/Backspace 로 선택된 검토 부재 삭제
   useEffect(() => {
@@ -296,6 +300,20 @@ export const Workspace: React.FC = () => {
       minY = cropBBox.minY; maxY = cropBBox.maxY;
     }
 
+    // 1-c) 도면 축척 판정 → 월드 mm 환산 계수(unitMm).
+    //      도면이 참값의 N배로 그려져 있고 치수만 DIMLFAC로 참값을 보이는 경우가 실제로 있다
+    //      (1#2#结构图.dwg = 2배). 보정 안 하면 절점·스팬·단면이 전부 N배로 MIDAS에 넘어간다.
+    //      ⚠️ 한 파일에 축척이 다른 도면이 섞이므로(1#2#: 대부분 2×, 일부 1×) crop 범위로 한정해 판정.
+    //      엔티티 20만개 판정은 무거워서 (엔티티, crop)이 바뀔 때만 재계산한다(리사이즈 시 재사용).
+    const scaleKey = cropBBox ? `${cropBBox.minX},${cropBBox.minY},${cropBBox.maxX},${cropBBox.maxY}` : '-';
+    let sc = scaleRef.current;
+    if (!sc || sc.entities !== dxfEntities || sc.key !== scaleKey) {
+      sc = { entities: dxfEntities, key: scaleKey, info: analyzeDrawingScale(dxfEntities, cropBBox ?? undefined) };
+      scaleRef.current = sc;
+      useDrawingStore.getState().setScaleInfo(sc.info);
+    }
+    const unitMm = 1 / effectiveScaleFactor(sc.info, scaleOverride);
+
     // 2) 캔버스에 맞춘 스케일/오프셋 (DXF Y축은 위로 향하므로 뒤집음)
     const pad = 40;
     const dxfW = (maxX - minX) || 1;
@@ -315,7 +333,7 @@ export const Workspace: React.FC = () => {
     const tx = (x: number) => pad + (x - minX) * scale;
     const ty = (y: number) => pad + (maxY - y) * scale;
     // 구조 부재 추출이 화면과 정확히 정합되도록 변환 파라미터 저장
-    useDrawingStore.getState().setDxfTransform({ scale, minX, maxY, pad });
+    useDrawingStore.getState().setDxfTransform({ scale, minX, maxY, pad, unitMm });
 
     // 3) 엔티티 → 레이어별 Path2D (정적 배경 드로우리스트). Fabric 객체를 만들지 않아
     //    수만 개 엔티티도 한 번의 stroke로 그린다(대용량 도면 성능).
@@ -363,7 +381,7 @@ export const Workspace: React.FC = () => {
 
     dxfDrawRef.current = [...groups.values()];
     canvas.requestRenderAll(); // → after:render → renderBg 로 배경 재그림
-  }, [dxfEntities, dxfLayers, resizeTick, cropBBox]);
+  }, [dxfEntities, dxfLayers, resizeTick, cropBBox, scaleOverride]);
 
   // 🔶 모델 오버레이: 자유단(연결 안 된 벽/보 끝점) 강조 + 검토 탭 선택 부재 하이라이트
   useEffect(() => {
@@ -619,13 +637,16 @@ export const Workspace: React.FC = () => {
         const mt = state.dxfTransform;
         if (state.model && mt) {
           const nodeById = new Map(state.model.nodes.map((nd) => [nd.id, nd]));
+          // 부재 치수는 월드 mm → px 변환은 mmPx(=scale/unitMm). scale은 '도면단위→px'라
+          // 2배로 그린 도면에선 히트 반경이 절반이 되어 클릭이 안 먹는다.
+          const mmPx = mt.scale / (mt.unitMm ?? 1);
           // 기둥: 풋프린트(+tol) 안이면 선택
           let colId: string | null = null, colBest = Infinity;
           for (const c of state.model.columns) {
             const nd = nodeById.get(c.node); if (!nd) continue;
             const pc = worldToCanvas(nd, mt);
             const dd = Math.hypot(p.x - pc.x, p.y - pc.y);
-            const half = (Math.max(c.width, c.depth, 200) / 2) * mt.scale;
+            const half = (Math.max(c.width, c.depth, 200) / 2) * mmPx;
             if (dd <= half + tol && dd < colBest) { colBest = dd; colId = c.id; }
           }
           if (colId) { state.setSelectedMemberId(colId); clearVHandles(); canvas.discardActiveObject(); canvas.requestRenderAll(); return; }
@@ -636,8 +657,8 @@ export const Workspace: React.FC = () => {
             const dd = distToSegment(p, worldToCanvas(a, mt), worldToCanvas(b, mt));
             if (dd <= tol + extra && dd < segBest) { segBest = dd; segId = id; }
           };
-          for (const w of state.model.walls) testSeg(w.id, w.i, w.j, (w.thickness / 2) * mt.scale);
-          for (const bm of state.model.beams) testSeg(bm.id, bm.i, bm.j, (bm.width / 2) * mt.scale);
+          for (const w of state.model.walls) testSeg(w.id, w.i, w.j, (w.thickness / 2) * mmPx);
+          for (const bm of state.model.beams) testSeg(bm.id, bm.i, bm.j, (bm.width / 2) * mmPx);
           if (segId) { state.setSelectedMemberId(segId); clearVHandles(); canvas.discardActiveObject(); canvas.requestRenderAll(); return; }
         }
 
@@ -858,6 +879,9 @@ export const Workspace: React.FC = () => {
         if (rect && t && (rect.width ?? 0) > 5 && (rect.height ?? 0) > 5) {
           const L = rect.left ?? 0, T = rect.top ?? 0;
           const W = rect.width ?? 0, H = rect.height ?? 0;
+          // ⚠️ 여기는 '도면 단위'로 되돌리는 게 맞다 — unitMm을 곱하면 안 된다.
+          //    cropBBox는 filterEntitiesByCrop()이 엔티티 원본 좌표와 직접 비교하는 값이라
+          //    월드 mm가 아니라 DXF 원본 좌표계여야 한다. (canvasToWorld와 의도적으로 다름)
           const wx = (px: number) => t.minX + (px - t.pad) / t.scale;
           const wy = (py: number) => t.maxY - (py - t.pad) / t.scale;
           st.setCropBBox({

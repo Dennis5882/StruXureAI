@@ -429,11 +429,15 @@ export const extractStructuralModel = (
   };
   const tx = (x: number) => t.pad + (x - t.minX) * t.scale;
   const ty = (y: number) => t.pad + (t.maxY - y) * t.scale;
-  const scale = t.scale || 1;
-  const toMm = (px: number) => px / scale;
+  const scale = t.scale || 1;              // px / 도면단위
+  const unitMm = t.unitMm ?? 1;            // 도면 1단위 = 몇 mm (2배로 그린 도면이면 0.5)
+  // ⚠️ mm 상수를 px로 바꿀 땐 반드시 mmPx를 쓸 것. scale은 '도면단위→px'라서
+  //    도면이 1:1 mm가 아니면 mm 상수에 곱하는 순간 의미가 틀어진다.
+  const mmPx = scale / unitMm;             // px / mm
+  const toMm = (px: number) => px / mmPx;
   const round5 = (mm: number) => Math.round(mm / 5) * 5;
-  const minPx = (opts?.wallMinMm ?? 60) * scale;
-  const maxPx = (opts?.wallMaxMm ?? 800) * scale; // 지하 옹벽 등 두꺼운 벽 포함
+  const minPx = (opts?.wallMinMm ?? 60) * mmPx;
+  const maxPx = (opts?.wallMaxMm ?? 800) * mmPx; // 지하 옹벽 등 두꺼운 벽 포함
   let idc = 0; const nid = (p: string) => `${p}_${Date.now().toString(36)}_${idc++}`;
 
   // 그리드 + 라벨 (버블 TEXT 정합, 없으면 자동번호)
@@ -543,7 +547,7 @@ export const extractStructuralModel = (
   //   (안 그러면 부재의 '마주보는 두 면'까지 한 면으로 합쳐져 두께/폭 측정이 망가짐).
   // ⚠️ 과거 px 바닥값 `Math.max(2, …)`은 작은 scale(거대 도면)에서 2px=400mm+로 폭주해 이 불변식을 깼다:
   //   200mm 보의 두 면(0.95px)이 병합돼 엉뚱한 상대와 짝지어져 폭이 440/500/1000으로 측정됨.
-  const fMergePerp = Math.max(30 * scale, 0.02), fMergeGap = 400 * scale;
+  const fMergePerp = Math.max(30 * mmPx, 0.02), fMergeGap = 400 * mmPx;
   const wallFaces = mergeCollinearFaces(faces, fMergePerp, fMergeGap);
   const wp = pairFaces(wallFaces, minPx, maxPx);
   const rawAxes: StructureLineData[] = wp.axes.map((ax) => ({
@@ -554,8 +558,8 @@ export const extractStructuralModel = (
 
   // 단일선 벽 회복: 짝 못 찾은 '긴' 면선 중 기존 축선에 안 덮인 것 → 중심선으로 채택(기본두께=측정 중앙값).
   // 이미 추출된 벽의 반대 면(축선에서 ~두께만큼 떨어진 면)은 '덮임'으로 보고 제외해 중복 방지.
-  const medThickPx = (() => { const v = wp.axes.map((a) => a.thickPx).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : 200 * scale; })();
-  const minSinglePx = 500 * scale; // 0.5m 미만은 노이즈로 간주
+  const medThickPx = (() => { const v = wp.axes.map((a) => a.thickPx).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : 200 * mmPx; })();
+  const minSinglePx = 500 * mmPx; // 0.5m 미만은 노이즈로 간주
   // 이 면이 [minPx,maxPx] 내 평행·중첩 파트너를 가지는가 = 이중선 벽의 한 면 (단일선으로 오인 금지)
   const hasPartner = (idx: number): boolean => {
     const F = wallFaces[idx], fa = getAngle(F.a, F.b), fm = getMidpoint(F.a, F.b);
@@ -597,12 +601,12 @@ export const extractStructuralModel = (
   let unpaired = wp.unpaired - singleLine;
   // 병합 갭에 월드(mm) 상한: 작은 scale(거대 도면)에서 px 바닥값(30)이 수십~수백 m로 폭주해
   //   평면 간 동일선상 조각들이 하나로 병합되던 문제 방지. 정상 스케일에선 좌측값이 작아 상한 미적용(무회귀).
-  const gapCap = 20000 * scale; // 20m 초과 갭은 같은 부재로 안 봄
+  const gapCap = 20000 * mmPx; // 20m 초과 갭은 같은 부재로 안 봄
   const wallAxes = mergeCollinearLines(rawAxes, Math.max(4, maxPx * 0.5), Math.min(Math.max(30, maxPx * 8), gapCap));
 
   // 보: 이중선(면쌍)→축선+폭, 짝 없는 보선→단일 중심선(플래그). 보 폭 범위는 벽보다 넓게.
-  const beamMinPx = (opts?.beamMinMm ?? 150) * scale;
-  const beamMaxPx = (opts?.beamMaxMm ?? 1200) * scale;
+  const beamMinPx = (opts?.beamMinMm ?? 150) * mmPx;
+  const beamMaxPx = (opts?.beamMaxMm ?? 1200) * mmPx;
   const beamFacesM = mergeCollinearFaces(beamFaces, fMergePerp, fMergeGap);
   const bp = pairFaces(beamFacesM, beamMinPx, beamMaxPx);
   const rawBeams: StructureLineData[] = bp.axes.map((ax) => ({
@@ -644,7 +648,7 @@ export const extractStructuralModel = (
       if (!pos) continue;
       marks.push({ L, cx: tx(pos.x), cy: ty(pos.y) });
     }
-    const LTOL = 1500 * scale; // 집중표주는 보 바로 옆/위에 배치됨
+    const LTOL = 1500 * mmPx; // 집중표주는 보 바로 옆/위에 배치됨
     for (const bm of beams) {
       const A = bm.coordinates[0], B = bm.coordinates[1];
       if (!A || !B) continue;
@@ -690,7 +694,7 @@ export const extractStructuralModel = (
 
   // 기둥: 그리드 스냅 + 중복 제거 + gridRef/단면(mm)
   // ⚠️ mm 기반(scale 환산). 과거 px 고정값(20/10)은 축척에 따라 1m+로 과도 스냅돼 기둥을 오배치시켰음.
-  const SNAP = 150 * scale, DEDUP = 120 * scale; // 그리드 근접(≤150mm)만 스냅, 중복(≤120mm)만 병합
+  const SNAP = 150 * mmPx, DEDUP = 120 * mmPx; // 그리드 근접(≤150mm)만 스냅, 중복(≤120mm)만 병합
   const xpos = xs.map((o) => o.pos), ypos = ys.map((o) => o.pos);
   for (const c of cols) {
     if (xpos.length) { const n = nearest(c.cx, xpos); if (n.dist <= SNAP) c.cx = n.val; }
@@ -734,12 +738,12 @@ export const extractStructuralModel = (
   }
 
   // T자 접합 절점화: 벽 끝점이 다른 벽 몸통에 닿으면 분할+스냅 → 접합부 좌표 공유(그래프/MIDAS 연결 완성)
-  const wallsFinal = opts?.topology === false ? wallAxes : splitWallsAtJunctions(wallAxes, 220 * scale);
+  const wallsFinal = opts?.topology === false ? wallAxes : splitWallsAtJunctions(wallAxes, 220 * mmPx);
 
   // 보 절점 분할: (1) 기둥을 지나는 보를 기둥 중심에서 끊어 분할점=기둥 중심 → 절점 공유(보-기둥 연결),
   //   (2) 보-보 T자 접합 분할. 결과: 보가 그리드선 따라 한 덩어리로 병합돼 있던 것이 기둥/교차점 단위 스팬으로.
   const beamsFinal = opts?.topology === false ? beams
-    : splitWallsAtJunctions(splitLinesAtColumns(beams, kept, 200 * scale), 220 * scale);
+    : splitWallsAtJunctions(splitLinesAtColumns(beams, kept, 200 * mmPx), 220 * mmPx);
 
   const members: StructureLineData[] = [...wallsFinal, ...beamsFinal];
   let tagged = 0;

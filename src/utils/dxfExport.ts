@@ -38,9 +38,12 @@ const assembleDxf = (ent: string[], used: Map<string, number>): string => {
 };
 
 export const buildDxf = (lines: StructureLineData[], transform: DxfTransform | null): string => {
-  const wx = transform ? (px: number) => transform.minX + (px - transform.pad) / transform.scale : (px: number) => px;
-  const wy = transform ? (py: number) => transform.maxY - (py - transform.pad) / transform.scale : (py: number) => -py;
-  const wlen = transform ? (px: number) => px / transform.scale : (px: number) => px;
+  // 월드 mm로 내보낸다 — 도면이 2배로 그려진 경우(unitMm=0.5) 여기서도 환산해야
+  // model 기반 내보내기(buildDxfFromModel)와 단위가 어긋나지 않는다.
+  const u = transform?.unitMm ?? 1;
+  const wx = transform ? (px: number) => (transform.minX + (px - transform.pad) / transform.scale) * u : (px: number) => px;
+  const wy = transform ? (py: number) => (transform.maxY - (py - transform.pad) / transform.scale) * u : (py: number) => -py;
+  const wlen = transform ? (px: number) => (px / transform.scale) * u : (px: number) => px;
 
   const ent: string[] = [];
   const e = (code: number, val: string | number) => { ent.push(String(code), String(val)); };

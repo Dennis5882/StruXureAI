@@ -41,6 +41,14 @@ const DICT: Record<string, Record<Lang, string>> = {
   cropBigTitle: { ko: '큰 도면입니다 (여러 평면 포함 가능)', en: 'Large drawing (may contain several plans)', zh: '圖面很大（可能含多張平面）' },
   cropBigBody:  { ko: '한 층(평면)만 선택하면 그 영역이 확대되어 벽 두께·보 폭·보-기둥 연결까지 정밀하게 추출됩니다.', en: 'Select one floor plan — it zooms in so walls, beam widths and beam–column links extract precisely.', zh: '框選單一樓層平面後會放大該區，牆厚、梁寬與梁柱連接皆可精確擷取。' },
 
+  // 축척 자동 보정 (치수문자 근거)
+  scTitle:      { ko: '도면 축척 자동 보정', en: 'Drawing scale auto-correction', zh: '圖面比例自動校正' },
+  scBody:       { ko: '이 도면은 실제 치수의 {f}배로 그려져 있습니다. 치수문자를 근거로 판정해 모델을 실제 mm로 환산합니다.', en: 'This drawing is drawn at {f}× actual size. Detected from dimension text; the model is converted to real mm.', zh: '此圖面以實際尺寸的 {f} 倍繪製。依尺寸標註判定，模型已換算為實際 mm。' },
+  scEvid:       { ko: '근거: 치수체인 {a}/{c} 일치 (인접쌍 {p}개)', en: 'Evidence: {a}/{c} dimension chains agree ({p} pairs)', zh: '依據：尺寸鏈 {a}/{c} 一致（相鄰對 {p} 組）' },
+  scOff:        { ko: '보정 끄기 (1:1로 두기)', en: 'Turn off (keep 1:1)', zh: '關閉校正（維持 1:1）' },
+  scOn:         { ko: '보정 다시 켜기 ({f}배)', en: 'Re-enable ({f}×)', zh: '重新啟用（{f} 倍）' },
+  scMixed:      { ko: '축척이 다른 도면이 섞여 있어 보정하지 않았습니다. 평면 한 장만 크롭하면 판정됩니다.', en: 'Mixed scales detected — not corrected. Crop a single plan to resolve.', zh: '偵測到比例混雜，未做校正。請框選單一平面後再判定。' },
+
   // 검토 탭 — 품질
   qTitle:       { ko: '추출 품질', en: 'Extraction quality', zh: '擷取品質' },
   qEmpty:       { ko: '아직 추출된 모델이 없습니다.\n③ 추출을 먼저 실행하세요.', en: 'No model yet.\nRun ③ Extract first.', zh: '尚無模型。\n請先執行 ③ 擷取。' },

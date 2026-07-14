@@ -2,6 +2,17 @@ import { create } from 'zustand';
 import { DrawingMode, StructureType, StructureLineData, Point2D } from '../types/drawing';
 import { FloorModel, SColumn, SWall, SBeam } from '../types/structural';
 import { incorporateLine, autoConnectFreeEnds as autoConnectFreeEndsPure } from '../utils/structuralModel';
+import type { ScaleAnalysis } from '../utils/drawingScale';
+
+/**
+ * 적용할 축척 배율(기하 ÷ 참값). 사용자 오버라이드 > 자동판정 > 1(보정 안함).
+ * ⚠️ UI 표시와 실제 좌표 변환이 갈라지지 않도록 반드시 이 함수 하나만 쓸 것.
+ */
+export const effectiveScaleFactor = (info: ScaleAnalysis | null, override: number | null): number => {
+  if (override && override > 0) return override;
+  if (info && !info.reject) return info.factor;
+  return 1;
+};
 
 // 검토→수정: 선택된 모델 부재(C1/W1/B1)에 적용할 부분 패치
 export type MemberPatch = Partial<SColumn> & Partial<SWall> & Partial<SBeam>;
@@ -15,14 +26,20 @@ export interface DxfLayer {
 
 // 📐 DXF → 캔버스 좌표 변환 파라미터 (구조 부재 추출 시 화면 정합용)
 //    canvasX = pad + (x - minX) * scale,  canvasY = pad + (maxY - y) * scale
+//    ※ minX/maxY/scale은 전부 '도면 단위' 기준. 월드 mm로 가려면 unitMm을 곱한다.
 export interface DxfTransform {
-  scale: number;
-  minX: number;
-  maxY: number;
-  pad: number;
+  scale: number;  // px / 도면단위
+  minX: number;   // 도면 단위
+  maxY: number;   // 도면 단위
+  pad: number;    // px
+  // 도면 1단위 = 몇 mm 인가. 보통 1(도면이 1:1 mm).
+  // 실제 사례(1#2#结构图.dwg)처럼 도면이 참값의 2배로 그려진 경우 0.5 → 월드 mm가 절반이 된다.
+  // detectDrawingScale()이 치수문자로 판정. ⚠️ 이걸 틀리면 모델 전체가 N배로 MIDAS에 넘어간다.
+  unitMm?: number;
 }
 
-// 📦 추출 범위 (world mm). 미니맵 또는 캔버스 CROP 모드에서 지정.
+// 📦 추출 범위 (도면 단위 — DXF 원본 좌표계). 미니맵 또는 캔버스 CROP 모드에서 지정.
+//    filterEntitiesByCrop()이 엔티티 원본 좌표와 직접 비교하므로 월드 mm가 아니라 도면 단위다.
 export interface CropRegion {
   minX: number;
   minY: number;
@@ -54,6 +71,10 @@ interface DrawingState {
   dxfEntities: any[];
   dxfTransform: DxfTransform | null;
   cropBBox: CropRegion | null; // 추출 범위 (미니맵/캔버스 CROP 공유)
+  // 📏 도면 축척 판정(치수문자 근거) + 사용자 오버라이드.
+  //    scaleInfo는 근거 표시용, scaleOverride는 사용자가 자동판정을 뒤집을 때만 non-null.
+  scaleInfo: ScaleAnalysis | null;
+  scaleOverride: number | null;
   isSidebarOpen: boolean;
   isHelpOpen: boolean;
   lang: 'ko' | 'en' | 'zh';
@@ -81,6 +102,8 @@ interface DrawingState {
   setDxfLayers: (layers: DxfLayer[]) => void;
   setDxfEntities: (entities: any[]) => void;
   setDxfTransform: (t: DxfTransform | null) => void;
+  setScaleInfo: (i: ScaleAnalysis | null) => void;
+  setScaleOverride: (f: number | null) => void;
   setCropBBox: (b: CropRegion | null) => void;
   toggleDxfLayer: (name: string) => void;
   toggleSidebar: () => void;
@@ -133,6 +156,8 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   dxfEntities: [],
   dxfTransform: null,
   cropBBox: null,
+  scaleInfo: null,
+  scaleOverride: null,
   isSidebarOpen: false,
   isHelpOpen: false,
   lang: 'ko',
@@ -158,6 +183,8 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   setDxfLayers: (dxfLayers) => set({ dxfLayers }),
   setDxfEntities: (dxfEntities) => set({ dxfEntities }),
   setDxfTransform: (dxfTransform) => set({ dxfTransform }),
+  setScaleInfo: (scaleInfo) => set({ scaleInfo }),
+  setScaleOverride: (scaleOverride) => set({ scaleOverride }),
   setCropBBox: (cropBBox) => set({ cropBBox }),
   toggleDxfLayer: (name) => set((state) => ({
     dxfLayers: state.dxfLayers.map((layer) =>
