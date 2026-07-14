@@ -65,6 +65,7 @@ const DICT: Record<string, Record<Lang, string>> = {
   edRot:        { ko: '회전°', en: 'Rot°', zh: '旋轉°' },
   edThick:      { ko: '두께 t', en: 'Thick t', zh: '厚 t' },
   edBeamW:      { ko: '폭 w', en: 'Width w', zh: '寬 w' },
+  edBeamD:      { ko: '춤 d', en: 'Depth d', zh: '深 d' },
   edDone:       { ko: '닫기', en: 'Close', zh: '關閉' },
   edDelete:     { ko: '삭제', en: 'Delete', zh: '刪除' },
 

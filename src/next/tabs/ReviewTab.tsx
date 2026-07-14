@@ -184,12 +184,20 @@ export const ReviewTab: React.FC = () => {
               return (
                 <div key={b.id} className={rowCls(sel)}>
                   <button onClick={() => toggle(b.id)} className="w-full flex justify-between items-center px-2 py-1 text-left">
-                    <span className="text-zinc-300">{b.id}{b.singleLine ? ` · ${n('qSingle')}` : ''}</span>
-                    <span className="text-zinc-500">w{b.width}</span>
+                    <span className="text-zinc-300">
+                      {b.id}
+                      {/* 도면 부호(KL1 등) = 설계 명시값 → 측정 추정과 구분해 강조 */}
+                      {b.mark && <span className="ml-1 text-emerald-400 font-medium">{b.mark}</span>}
+                      {b.singleLine ? ` · ${n('qSingle')}` : ''}
+                    </span>
+                    <span className={b.fromLabel ? 'text-emerald-300' : 'text-zinc-500'}>
+                      {b.width}{b.depth ? `×${b.depth}` : ''}
+                    </span>
                   </button>
                   {sel && (
                     <div className="flex flex-wrap gap-2 px-2 pb-2 pt-0.5">
                       <NumField label={n('edBeamW')} value={b.width} onChange={(v) => updateMember(b.id, { width: v })} />
+                      <NumField label={n('edBeamD')} value={b.depth ?? 0} onChange={(v) => updateMember(b.id, { depth: v })} />
                       {delBtn(b.id)}
                     </div>
                   )}

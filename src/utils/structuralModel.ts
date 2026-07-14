@@ -73,6 +73,9 @@ export const buildStructuralModel = (
       beams.push({
         id: `B${++bId}`, i: ni, j: nj,
         width: Math.round(m.properties?.width_mm ?? 300),
+        depth: typeof m.properties?.depth_mm === 'number' ? Math.round(m.properties.depth_mm) : undefined,
+        mark: m.properties?.mark,
+        fromLabel: !!m.properties?.fromLabel,
         singleLine: !!m.properties?.singleLine,
         lineId: m.id,
       });

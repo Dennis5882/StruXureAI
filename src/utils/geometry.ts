@@ -108,6 +108,19 @@ export const classifyLayer = (name: string): StructureType | null => {
   if (/WALL|옹벽|벽|墙|牆|RC|SHEAR/.test(u)) return 'WALL';
   return null;
 };
+// ── 평법(平法) 집중표주 파싱: "KL(1) 200X400" = 부호(KL) + 경간수(1) + 폭×춤(200×400) ──
+// 중국/대만 구조도의 표준 보 표기. 설계자가 명시한 값이라 기하 측정보다 정확하고,
+// 평면도 기하로는 절대 얻을 수 없는 '춤(depth)'을 준다(MIDAS 보 단면에 필수).
+// 부호 예: KL=框架梁, L=次梁, LL=连梁, LLK=连梁(框架), KZL=框支梁, WKL=屋面框架梁, XL=悬挑梁.
+// 철근/스터럽 표기("8@100/200(2)", "214;216")는 숫자로 시작하거나 형식이 달라 매칭되지 않는다.
+export interface BeamLabel { mark: string; spans: string; width: number; depth: number; }
+const BEAM_LABEL_RE = /^\s*([A-Z]{1,4}[A-Z0-9\-]*)\s*\(\s*(\d+[AB]?)\s*\)\s*(\d{2,4})\s*[xX×*]\s*(\d{2,4})/;
+export const parseBeamLabel = (text: string): BeamLabel | null => {
+  const m = BEAM_LABEL_RE.exec((text || '').trim());
+  if (!m) return null;
+  return { mark: m[1], spans: m[2], width: +m[3], depth: +m[4] };
+};
+
 // 통심선(축/그리드) 레이어 — CEN(centerline), 통심선/通芯/通り芯 등 관례 포함. 轴=간체·軸=번체 모두.
 const isAxisLayer = (name: string): boolean => /AXIS|AXN|GRID|CEN|축|통|軸|轴|通|网/i.test(name || '');
 // 축 버블(통심부호) 레이어
@@ -395,7 +408,7 @@ export interface StructModelResult {
   counts: {
     wallAxes: number; columns: number; columnsTagged: number; unpairedFaces: number;
     nodes: number; extended: number; snappedCol: number; wallsLabeled: number; beams: number;
-    quantized: number;
+    quantized: number; beamsLabeled: number;
   };
 }
 
@@ -610,6 +623,42 @@ export const extractStructuralModel = (
   }
   const beams = rawBeams.length ? mergeCollinearLines(rawBeams, Math.max(4, beamMaxPx * 0.5), Math.min(Math.max(30, beamMaxPx * 8), gapCap)) : [];
 
+  // ── 평법 집중표주(라벨) → 보 부호·단면 부여 ──
+  // 라벨 텍스트는 설계 명시값이라 면쌍 측정보다 정확하고, 춤(depth)까지 준다.
+  // 라벨 레이어명이 관례마다 달라(예: 벽부호 Q-5가 '梁集中标注'에 섞임) 레이어로 거르지 않고
+  // 모든 TEXT를 파싱 규칙으로 판별한다. 주석 레이어는 자동필터로 숨겨져도 읽는다(그리드와 동일 방침).
+  // 분할(splitLinesAtColumns/splitWallsAtJunctions) '전'에 부여 → 분할 조각들이 속성을 그대로 상속.
+  let beamsLabeled = 0;
+  if (beams.length) {
+    const marks: { L: BeamLabel; cx: number; cy: number }[] = [];
+    for (const e of entities) {
+      const et = (e.type || '').toUpperCase();
+      if (et !== 'TEXT' && et !== 'MTEXT') continue;
+      const L = parseBeamLabel(cleanText(e.text));
+      if (!L) continue;
+      const pos = e.startPoint || e.position;
+      if (!pos) continue;
+      marks.push({ L, cx: tx(pos.x), cy: ty(pos.y) });
+    }
+    const LTOL = 1500 * scale; // 집중표주는 보 바로 옆/위에 배치됨
+    for (const bm of beams) {
+      const A = bm.coordinates[0], B = bm.coordinates[1];
+      if (!A || !B) continue;
+      let best: BeamLabel | null = null, bestD = LTOL;
+      for (const mk of marks) {
+        const P = { x: mk.cx, y: mk.cy };
+        const t = Math.max(0, Math.min(1, projParam(P, A, B)));
+        const d = getDistance(P, { x: A.x + (B.x - A.x) * t, y: A.y + (B.y - A.y) * t });
+        if (d < bestD) { bestD = d; best = mk.L; }
+      }
+      if (best) {
+        bm.properties = { ...(bm.properties || {}), mark: best.mark, width_mm: best.width, depth_mm: best.depth, fromLabel: true };
+        delete (bm.properties as any).widthEstimated;
+        beamsLabeled++;
+      }
+    }
+  }
+
   // 두께 양자화(프리셋): 측정값을 지역 표준치로 스냅. 원본은 *_measured_mm 로 보존. (raw면 끔)
   const profile = opts?.thicknessProfile ?? 'raw';
   const presetTable = THICKNESS_PRESETS[profile];
@@ -622,6 +671,7 @@ export const extractStructuralModel = (
       if (q !== m) { w.properties = { ...w.properties, thickness_mm: q, thickness_measured_mm: m }; quantized++; }
     }
     for (const bm of beams) {
+      if (bm.properties?.fromLabel) continue; // 라벨값 = 설계 명시값 → 양자화(스냅) 금지
       const m = bm.properties?.width_mm; if (typeof m !== 'number') continue;
       const q = quantizeTo(m, presetTable, QTOL);
       if (q !== m) { bm.properties = { ...bm.properties, width_mm: q, width_measured_mm: m }; quantized++; }
@@ -697,7 +747,7 @@ export const extractStructuralModel = (
     counts: {
       wallAxes: wallsFinal.length, columns: kept.length, columnsTagged: tagged, unpairedFaces: unpaired,
       nodes: topo.nodes, extended: topo.extended, snappedCol: topo.snappedCol, wallsLabeled, beams: beams.length,
-      quantized,
+      quantized, beamsLabeled,
     },
   };
 };

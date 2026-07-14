@@ -79,8 +79,9 @@ export const buildMidasRequests = (
   // 단면(기둥·보) / 두께(벽) 레지스트리
   const sects: { id: number; name: string; h: number; w: number }[] = [];
   const smap = new Map<string, number>();
-  const sectId = (h: number, w: number, prefix: string): number => {
-    const name = `${prefix}_${Math.round(h)}x${Math.round(w)}`;
+  // mark = 도면 설계 부호(KL1 등) → 있으면 단면명에 붙여 Gen NX에서 도면과 대조 가능.
+  const sectId = (h: number, w: number, prefix: string, mark?: string): number => {
+    const name = `${mark ? `${mark}_` : `${prefix}_`}${Math.round(h)}x${Math.round(w)}`;
     const hit = smap.get(name); if (hit) return hit;
     const id = sects.length + 1; smap.set(name, id); sects.push({ id, name, h, w }); return id;
   };
@@ -104,7 +105,8 @@ export const buildMidasRequests = (
       elems.push({ id: elems.length + 1, TYPE: 'PLATE', MATL: 1, SECT: tid, NODE: [nodeAt(w.i, k), nodeAt(w.j, k), nodeAt(w.j, k - 1), nodeAt(w.i, k - 1)], ANGLE: 0, STYPE: 1 });
   }
   for (const bm of model.beams) {
-    const sid = sectId(bm.width * 2, bm.width, 'B'); // 춤(depth) 미상 → 폭의 2배 더미
+    // 춤(depth)은 평면 기하로 못 얻어 예전엔 폭×2 더미였음 → 평법 라벨("KL(1) 200X400")에서 읽으면 실제값 사용.
+    const sid = sectId(bm.depth ?? bm.width * 2, bm.width, 'B', bm.mark);
     for (let k = 1; k <= N; k++) // 각 층 바닥의 수평 보
       elems.push({ id: elems.length + 1, TYPE: 'BEAM', MATL: 1, SECT: sid, NODE: [nodeAt(bm.i, k), nodeAt(bm.j, k)], ANGLE: 0, STYPE: 0 });
   }
@@ -155,8 +157,9 @@ export const buildMidasRequestsBuilding = (floors: FloorModel[], opts?: MidasOpt
     nodes.push({ id, x: f4(x), y: f4(y), z: f4(z) }); return id;
   };
   const sects: MSect[] = []; const smap = new Map<string, number>();
-  const sectId = (h: number, w: number, prefix: string): number => {
-    const name = `${prefix}_${Math.round(h)}x${Math.round(w)}`;
+  // mark = 도면 설계 부호(KL1 등) → 있으면 단면명에 붙여 Gen NX에서 도면과 대조 가능.
+  const sectId = (h: number, w: number, prefix: string, mark?: string): number => {
+    const name = `${mark ? `${mark}_` : `${prefix}_`}${Math.round(h)}x${Math.round(w)}`;
     const hit = smap.get(name); if (hit) return hit;
     const id = sects.length + 1; smap.set(name, id); sects.push({ id, name, h, w }); return id;
   };
@@ -183,7 +186,7 @@ export const buildMidasRequestsBuilding = (floors: FloorModel[], opts?: MidasOpt
     }
     for (const bm of f.beams) {
       const a = p.get(bm.i), b = p.get(bm.j); if (!a || !b) continue;
-      const sid = sectId(bm.width * 2, bm.width, 'B'); beams++;
+      const sid = sectId(bm.depth ?? bm.width * 2, bm.width, 'B', bm.mark); beams++;
       elems.push({ id: elems.length + 1, TYPE: 'BEAM', MATL: 1, SECT: sid, NODE: [nodeAt(a.x, a.y, base), nodeAt(b.x, b.y, base)], ANGLE: 0, STYPE: 0 });
     }
   }
