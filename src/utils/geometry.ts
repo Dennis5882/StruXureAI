@@ -538,8 +538,12 @@ export const extractStructuralModel = (
     }
   }
 
-  // 벽 면쌍 → 축선 + 두께(mm). 매칭 전 동일선상 조각 병합(커버리지↑). perpTol는 최소벽두께보다 작게.
-  const fMergePerp = Math.max(2, 30 * scale), fMergeGap = 400 * scale;
+  // 벽 면쌍 → 축선 + 두께(mm). 매칭 전 동일선상 조각 병합(커버리지↑).
+  // perpTol = '같은 직선의 조각인가' 판정용이라 월드(mm) 기준이어야 하고, 반드시 최소 부재두께보다 작아야 한다
+  //   (안 그러면 부재의 '마주보는 두 면'까지 한 면으로 합쳐져 두께/폭 측정이 망가짐).
+  // ⚠️ 과거 px 바닥값 `Math.max(2, …)`은 작은 scale(거대 도면)에서 2px=400mm+로 폭주해 이 불변식을 깼다:
+  //   200mm 보의 두 면(0.95px)이 병합돼 엉뚱한 상대와 짝지어져 폭이 440/500/1000으로 측정됨.
+  const fMergePerp = Math.max(30 * scale, 0.02), fMergeGap = 400 * scale;
   const wallFaces = mergeCollinearFaces(faces, fMergePerp, fMergeGap);
   const wp = pairFaces(wallFaces, minPx, maxPx);
   const rawAxes: StructureLineData[] = wp.axes.map((ax) => ({
@@ -652,7 +656,13 @@ export const extractStructuralModel = (
         if (d < bestD) { bestD = d; best = mk.L; }
       }
       if (best) {
-        bm.properties = { ...(bm.properties || {}), mark: best.mark, width_mm: best.width, depth_mm: best.depth, fromLabel: true };
+        // 기하 측정값은 보존 → 라벨(정답)과 대조해 면쌍 매칭 품질을 검증할 수 있게 한다.
+        const measured = bm.properties?.widthEstimated ? undefined : bm.properties?.width_mm;
+        bm.properties = {
+          ...(bm.properties || {}),
+          mark: best.mark, width_mm: best.width, depth_mm: best.depth, fromLabel: true,
+          ...(typeof measured === 'number' ? { width_measured_mm: measured } : {}),
+        };
         delete (bm.properties as any).widthEstimated;
         beamsLabeled++;
       }

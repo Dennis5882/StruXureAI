@@ -38,6 +38,7 @@ export interface SBeam {
   depth?: number;       // mm — 평법 집중표주(라벨)에서만 얻을 수 있음(평면 기하로는 불가)
   mark?: string;        // 설계 부호 (KL1, L2, KZL-1 …) → MIDAS 단면명
   fromLabel?: boolean;  // 단면이 도면 라벨(설계 명시값) 출처 = 측정 추정보다 신뢰
+  widthMeasured?: number; // 라벨이 덮어쓰기 전 기하 측정 폭 — 라벨(정답)과 대조해 매칭 품질 검증용
   gridLine?: string;
   singleLine?: boolean;
   lineId?: string;      // 원본 캔버스 line id (삭제 시 동기화)

@@ -76,6 +76,7 @@ export const buildStructuralModel = (
         depth: typeof m.properties?.depth_mm === 'number' ? Math.round(m.properties.depth_mm) : undefined,
         mark: m.properties?.mark,
         fromLabel: !!m.properties?.fromLabel,
+        widthMeasured: m.properties?.width_measured_mm,
         singleLine: !!m.properties?.singleLine,
         lineId: m.id,
       });
