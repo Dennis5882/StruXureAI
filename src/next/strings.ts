@@ -23,6 +23,7 @@ const DICT: Record<string, Record<Lang, string>> = {
 
   openImage:    { ko: '이미지', en: 'Image', zh: '影像' },
   openCad:      { ko: 'CAD', en: 'CAD', zh: 'CAD' },
+  manualBtn:    { ko: '사용법', en: 'Guide', zh: '使用說明' },
 
   // 탭
   tabLayers:    { ko: '레이어', en: 'Layers', zh: '圖層' },

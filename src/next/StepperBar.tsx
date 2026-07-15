@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Layers, ImagePlus, FileUp, ArrowRight, Check } from 'lucide-react';
+import { Layers, ImagePlus, FileUp, ArrowRight, Check, BookOpen } from 'lucide-react';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { loadFile } from '../utils/fileLoader';
 import { LANGS, type Lang } from '../i18n';
@@ -10,9 +10,10 @@ import type { TabKey } from './RightDock';
 interface Props {
   onExtract: () => void;
   setTab: (t: TabKey) => void;
+  onToggleManual: () => void;
 }
 
-export const StepperBar: React.FC<Props> = ({ onExtract, setTab }) => {
+export const StepperBar: React.FC<Props> = ({ onExtract, setTab, onToggleManual }) => {
   const { n } = useNext();
   const lang = useDrawingStore((s) => s.lang);
   const setLang = useDrawingStore((s) => s.setLang);
@@ -57,6 +58,11 @@ export const StepperBar: React.FC<Props> = ({ onExtract, setTab }) => {
             <span className="font-bold text-sm tracking-wider text-zinc-100">StruXureAI</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">{n('badge')}</span>
           </div>
+
+          {/* 사용 설명서 열기 (왼쪽 패널 토글) */}
+          <button onClick={onToggleManual} className="flex items-center space-x-1.5 text-xs bg-zinc-800 text-zinc-300 px-2 py-1.5 rounded hover:bg-zinc-700 hover:text-white" title={n('manualBtn')}>
+            <BookOpen size={14} /><span>{n('manualBtn')}</span>
+          </button>
 
           <input type="file" ref={imgRef} accept="image/*" hidden onChange={onFile} />
           <input type="file" ref={cadRef} accept=".dxf,.dwg" hidden onChange={onFile} />
