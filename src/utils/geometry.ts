@@ -561,10 +561,14 @@ export const extractStructuralModel = (
   const medThickPx = (() => { const v = wp.axes.map((a) => a.thickPx).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : 200 * mmPx; })();
   const minSinglePx = 500 * mmPx; // 0.5m 미만은 노이즈로 간주
   // 이 면이 [minPx,maxPx] 내 평행·중첩 파트너를 가지는가 = 이중선 벽의 한 면 (단일선으로 오인 금지)
+  // ⚠️ 이미 pairFaces에서 다른 면과 짝지어져 소진된(used) 면은 후보에서 제외해야 한다.
+  //   안 그러면 "긴 면 하나 + 기둥마다 끊긴 짧은 면 여러 개"(전형적 이중선 벽) 구도에서
+  //   긴 면이 그중 하나와만 짝지어진 뒤, 나머지 짧은 면들이 "이미 남의 짝이 된 긴 면"을
+  //   여전히 유효한 파트너로 오인해 단일선 복구도 안 되고 통째로 누락된다.
   const hasPartner = (idx: number): boolean => {
     const F = wallFaces[idx], fa = getAngle(F.a, F.b), fm = getMidpoint(F.a, F.b);
     for (let j = 0; j < wallFaces.length; j++) {
-      if (j === idx) continue; const B = wallFaces[j];
+      if (j === idx || wp.used.has(j)) continue; const B = wallFaces[j];
       let ad = Math.abs(fa - getAngle(B.a, B.b)); if (ad > Math.PI / 2) ad = Math.PI - ad;
       if (ad > 0.08) continue;
       const d = getDistance(fm, perpFoot(fm, B.a, B.b)); if (d < minPx || d > maxPx) continue;
