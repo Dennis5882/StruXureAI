@@ -6,6 +6,7 @@ import { loadFiles } from '../utils/fileLoader';
 import { Point2D } from '../types/drawing';
 import { useT } from '../i18n';
 import { worldToCanvas, nodeDegrees, classifyMemberEnds } from '../utils/structuralModel';
+import { cleanText } from '../utils/geometry';
 
 // 그리드 스냅: g>0이면 가장 가까운 격자점으로 반올림
 const snapTo = (v: number, g: number): number => (g > 0 ? Math.round(v / g) * g : v);
@@ -75,6 +76,7 @@ export const Workspace: React.FC = () => {
   // DXF 배경 드로우리스트(레이어별 Path2D, scene px 좌표) — Fabric 객체 대신 한 번에 그림.
   // 숨긴 레이어는 빌드 시 제외하므로 그리기 단계에서 별도 가시성 조회 불필요.
   const dxfDrawRef = useRef<{ color: string; path: Path2D }[]>([]);
+  const dxfTextRef = useRef<{ x: number; y: number; rot: number; heightPx: number; text: string; color: string }[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [resizeTick, setResizeTick] = useState(0); // 영역 크기 변화 시 도면 재맞춤 트리거
 
@@ -247,7 +249,7 @@ export const Workspace: React.FC = () => {
     canvas.getObjects().filter((o: any) => o.isDxf).forEach((o) => canvas.remove(o));
 
     if (!dxfEntities || dxfEntities.length === 0) {
-      dxfDrawRef.current = []; // 배경 비우기
+      dxfDrawRef.current = []; dxfTextRef.current = []; // 배경 비우기
       canvas.requestRenderAll();
       return;
     }
@@ -284,14 +286,14 @@ export const Workspace: React.FC = () => {
       return s[Math.max(0, Math.floor(s.length * p / 100))];
     };
     let minX: number, minY: number, maxX: number, maxY: number;
-    if (allX.length === 0) { dxfDrawRef.current = []; canvas.requestRenderAll(); return; }
+    if (allX.length === 0) { dxfDrawRef.current = []; dxfTextRef.current = []; canvas.requestRenderAll(); return; }
     minX = pct(allX, 2); maxX = pct(allX, 98);
     minY = pct(allY, 2); maxY = pct(allY, 98);
     // 너무 좁으면(점 하나 수준) 전체 범위로 폴백
     if (maxX - minX < 1) { minX = Math.min(...allX); maxX = Math.max(...allX); }
     if (maxY - minY < 1) { minY = Math.min(...allY); maxY = Math.max(...allY); }
 
-    if (!isFinite(minX) || !isFinite(maxX)) { dxfDrawRef.current = []; canvas.requestRenderAll(); return; }
+    if (!isFinite(minX) || !isFinite(maxX)) { dxfDrawRef.current = []; dxfTextRef.current = []; canvas.requestRenderAll(); return; }
 
     // 1-b) 미니맵에서 추출 범위(crop)를 지정했으면 그 영역에 맞춰 확대한다.
     //      → 4장 도면 중 선택한 한 장이 화면을 채워 B1F 수준의 정밀도로 보인다.
@@ -348,16 +350,31 @@ export const Workspace: React.FC = () => {
       path.moveTo(pts[0].x, pts[0].y);
       for (let i = 1; i < pts.length; i++) path.lineTo(pts[i].x, pts[i].y);
     };
+    const texts: { x: number; y: number; rot: number; heightPx: number; text: string; color: string }[] = [];
 
     dxfEntities.forEach((e: any) => {
       const layer = layerMap.get(e.layer);
       const visible = layer ? layer.visible : true;
       const color = (layer && layer.color) || '#d4d4d8';
       const type = (e.type || '').toUpperCase();
-      // 비구조 엔티티 스킵 + 숨긴 레이어는 드로우리스트에서 제외
-      if (type === 'TEXT' || type === 'MTEXT' || type === 'HATCH' || type === 'SOLID' ||
-          type === 'DIMENSION' || type === 'ATTRIB' || type === 'ATTDEF' || type === 'INSERT') return;
       if (!visible) return;
+
+      // 그리드 버블 라벨·치수 문자 등 원본 CAD 주석 — 원본과 동일하게 배경에 그린다.
+      // (DIMENSION은 로드 시 이미 LINE/TEXT로 전개돼 있어(fileLoader expandEntities) 여기 남는 건 예외 케이스뿐)
+      if (type === 'TEXT' || type === 'MTEXT') {
+        const pos = e.startPoint || e.position;
+        const raw = cleanText(e.text);
+        if (pos && raw) {
+          const heightMm = (type === 'TEXT' ? e.textHeight : e.height) || 0;
+          const heightPx = Math.max(1, heightMm * scale);
+          const rotDeg = e.rotation || 0;
+          // DXF는 Y-up·반시계 회전, 캔버스는 ty()로 Y를 뒤집으므로 회전 방향도 반전된다.
+          texts.push({ x: tx(pos.x), y: ty(pos.y), rot: -rotDeg * Math.PI / 180, heightPx, text: raw, color });
+        }
+        return;
+      }
+      // 그 외 비구조 엔티티(해치/치수 잔여/블록 참조 등)는 배경에서 제외
+      if (type === 'HATCH' || type === 'SOLID' || type === 'DIMENSION' || type === 'ATTRIB' || type === 'ATTDEF' || type === 'INSERT') return;
 
       if (type === 'LINE' && Array.isArray(e.vertices) && e.vertices.length >= 2) {
         const [a, b] = e.vertices;
@@ -380,6 +397,7 @@ export const Workspace: React.FC = () => {
     });
 
     dxfDrawRef.current = [...groups.values()];
+    dxfTextRef.current = texts;
     canvas.requestRenderAll(); // → after:render → renderBg 로 배경 재그림
   }, [dxfEntities, dxfLayers, resizeTick, cropBBox, scaleOverride]);
 
@@ -496,7 +514,8 @@ export const Workspace: React.FC = () => {
       ctx.fillStyle = '#1e1e1e';
       ctx.fillRect(0, 0, bg.width, bg.height);
       const groups = dxfDrawRef.current;
-      if (!groups.length) return;
+      const texts = dxfTextRef.current;
+      if (!groups.length && !texts.length) return;
       const vpt = canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
       const zoom = vpt[0] || 1;
       // device = dpr ∘ viewport(scene). scene px 좌표의 Path2D를 그대로 stroke.
@@ -504,6 +523,23 @@ export const Workspace: React.FC = () => {
       ctx.lineWidth = 1 / zoom; // 화면상 ~1px
       ctx.lineJoin = 'round'; ctx.lineCap = 'round';
       for (const g of groups) { ctx.strokeStyle = g.color; ctx.stroke(g.path); }
+
+      // 그리드 버블 라벨·치수 문자(원본 CAD TEXT/MTEXT). 화면상 너무 작아지면(줌아웃) 스킵(가독성·성능).
+      if (texts.length) {
+        ctx.textBaseline = 'alphabetic';
+        ctx.textAlign = 'left';
+        for (const t of texts) {
+          const screenH = t.heightPx * zoom;
+          if (screenH < 4) continue;
+          ctx.save();
+          ctx.translate(t.x, t.y);
+          if (t.rot) ctx.rotate(t.rot);
+          ctx.font = `${t.heightPx}px sans-serif`;
+          ctx.fillStyle = t.color;
+          ctx.fillText(t.text, 0, 0);
+          ctx.restore();
+        }
+      }
     };
     sizeBg();
     (canvas as any).__renderBg = renderBg; // 리사이즈 등에서 강제 호출용
