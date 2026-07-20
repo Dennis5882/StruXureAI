@@ -72,6 +72,22 @@ export const ReviewTab: React.FC = () => {
         <Stat label={n('qFree')} value={q.freeEnds} tone={q.freeEnds > 0 ? 'warn' : 'ok'} />
       </div>
 
+      {/* 정상인 끝점은 경고에서 분리해 별도 표시 — 헛경고로 진짜 문제가 묻히지 않게 */}
+      {(q.endsAtColumn > 0 || q.openEnds > 0) && (
+        <div className="flex gap-2 text-[10px] text-zinc-500">
+          {q.endsAtColumn > 0 && (
+            <span title={n('qAtColumnHint')} className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1">
+              {n('qAtColumn')} <span className="text-zinc-300 font-medium">{q.endsAtColumn}</span>
+            </span>
+          )}
+          {q.openEnds > 0 && (
+            <span title={n('qOpenEndHint')} className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1">
+              {n('qOpenEnd')} <span className="text-zinc-300 font-medium">{q.openEnds}</span>
+            </span>
+          )}
+        </div>
+      )}
+
       {q.freeEnds > 0 && (
         <div className="space-y-1.5">
           <div className="flex items-start space-x-1.5 text-[10px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded px-2 py-1.5">

@@ -127,6 +127,54 @@ export const buildStructuralModel = (
   };
 };
 
+// ── 벽/보의 '미연결 끝점'을 성격별로 분류 ──
+// 예전엔 "벽/보 차수 ≤1"이면 전부 자유단으로 경고했는데, B1F 38개를 뜯어보니
+// 5개는 기둥에 붙어 있었고(=연결됨) 12개는 개구부·건물 외곽(=정상)이라 **45%가 헛경고**였다.
+// 정상인 것까지 경고하면 진짜 봐야 할 것이 묻힌다.
+// ⚠️ 품질 지표(workflow)와 캔버스 amber 링이 **같은 기준**을 쓰도록 여기 한 곳에 둔다.
+export const NEAR_MM = 600; // 이 안에 붙을 상대가 있으면 "붙었어야 하는데 안 붙은 것"
+export interface EndClassification {
+  unresolved: Set<string>; // 🔴 근처에 상대가 있는데 안 붙음 — 검토 대상
+  atColumn: Set<string>;   // ⚪ 기둥 절점에 붙음 — 연결됨
+  open: Set<string>;       // ✅ 주변에 상대 없음 — 개구부/외곽(정상)
+}
+export const classifyMemberEnds = (m: FloorModel): EndClassification => {
+  const res: EndClassification = { unresolved: new Set(), atColumn: new Set(), open: new Set() };
+  const deg = new Map<string, number>();
+  const inc = (id: string) => deg.set(id, (deg.get(id) || 0) + 1);
+  for (const w of m.walls) { inc(w.i); inc(w.j); }
+  for (const b of m.beams) { inc(b.i); inc(b.j); }
+
+  const nm = new Map(m.nodes.map((n) => [n.id, n]));
+  const colNodes = new Set(m.columns.map((c) => c.node));
+  const segs = [...m.walls, ...m.beams]
+    .map((x) => ({ a: nm.get(x.i), b: nm.get(x.j) }))
+    .filter((s) => s.a && s.b) as { a: SNode; b: SNode }[];
+
+  const distToSeg = (p: SNode, s: { a: SNode; b: SNode }): number => {
+    const dx = s.b.x - s.a.x, dy = s.b.y - s.a.y;
+    const L2 = dx * dx + dy * dy;
+    if (L2 === 0) return Math.hypot(p.x - s.a.x, p.y - s.a.y);
+    let t = ((p.x - s.a.x) * dx + (p.y - s.a.y) * dy) / L2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p.x - (s.a.x + t * dx), p.y - (s.a.y + t * dy));
+  };
+
+  deg.forEach((d, id) => {
+    if (d > 1) return;
+    if (colNodes.has(id)) { res.atColumn.add(id); return; }
+    const n = nm.get(id);
+    if (!n) { res.open.add(id); return; }
+    let near = false;
+    for (const s of segs) {
+      if (s.a === n || s.b === n) continue; // 자기가 속한 부재 제외
+      if (distToSeg(n, s) <= NEAR_MM) { near = true; break; }
+    }
+    (near ? res.unresolved : res.open).add(id);
+  });
+  return res;
+};
+
 // 절점 차수(연결 부재 수) — 그래프 연결성 점검/리포트용.
 export const nodeDegrees = (m: FloorModel): Map<string, number> => {
   const deg = new Map<string, number>();

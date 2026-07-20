@@ -2,6 +2,7 @@
 // 기존 store 를 수정하지 않고, 스냅샷을 받아 "지금 어디인지 / 다음 한 수"를 계산한다.
 import { FloorModel } from '../types/structural';
 import { StructureLineData } from '../types/drawing';
+import { classifyMemberEnds } from '../utils/structuralModel';
 
 export type StepState = 'done' | 'current' | 'todo';
 export type NextKey = 'open' | 'extract' | 'review' | 'send';
@@ -50,8 +51,14 @@ export interface ModelQuality {
   columns: number;
   beams: number;
   grid: number;
-  sharedNodes: number; // 차수 ≥ 2 (접합부)
-  freeEnds: number;    // 벽/보 끝점 중 차수 1 (어디에도 연결 안 됨)
+  sharedNodes: number;  // 차수 ≥ 2 (접합부)
+  // ── 벽/보의 미연결 끝점을 성격별로 분리한다 ──
+  // 예전엔 "벽/보 차수 ≤1"을 전부 freeEnds로 세어 경고했는데, B1F 38개를 뜯어보니
+  // 5개는 기둥에 붙어 있었고(연결됨) 12개는 개구부·건물 끝(정상)이라 **45%가 헛경고**였다.
+  // 정상인 것까지 amber로 띄우면 진짜 봐야 할 것이 묻힌다.
+  freeEnds: number;     // 🔴 진짜 검토 대상: 근처(≤600mm)에 붙을 상대가 있는데 안 붙은 끝
+  endsAtColumn: number; // ⚪ 기둥 절점에 붙은 끝 — 연결돼 있음(경고 아님)
+  openEnds: number;     // ✅ 주변에 붙을 상대가 없는 끝 — 개구부/건물 외곽(정상)
 }
 
 export function modelQuality(m: FloorModel | null): ModelQuality | null {
@@ -63,15 +70,10 @@ export function modelQuality(m: FloorModel | null): ModelQuality | null {
   for (const w of m.walls) { inc(degAll, w.i); inc(degAll, w.j); }
   for (const b of m.beams) { inc(degAll, b.i); inc(degAll, b.j); }
 
-  // 벽/보 전용 차수 (자유단 판정 — 기둥 단독 절점은 제외)
-  const degWB = new Map<string, number>();
-  for (const w of m.walls) { inc(degWB, w.i); inc(degWB, w.j); }
-  for (const b of m.beams) { inc(degWB, b.i); inc(degWB, b.j); }
-
   let shared = 0;
   degAll.forEach((d) => { if (d >= 2) shared++; });
-  let free = 0;
-  degWB.forEach((d) => { if (d <= 1) free++; });
+
+  const ends = classifyMemberEnds(m);
 
   return {
     nodes: m.nodes.length,
@@ -81,7 +83,9 @@ export function modelQuality(m: FloorModel | null): ModelQuality | null {
     beams: m.beams.length,
     grid: m.grid.length,
     sharedNodes: shared,
-    freeEnds: free,
+    freeEnds: ends.unresolved.size,
+    endsAtColumn: ends.atColumn.size,
+    openEnds: ends.open.size,
   };
 }
 

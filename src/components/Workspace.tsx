@@ -5,7 +5,7 @@ import { analyzeDrawingScale, type ScaleAnalysis } from '../utils/drawingScale';
 import { loadFiles } from '../utils/fileLoader';
 import { Point2D } from '../types/drawing';
 import { useT } from '../i18n';
-import { worldToCanvas, nodeDegrees } from '../utils/structuralModel';
+import { worldToCanvas, nodeDegrees, classifyMemberEnds } from '../utils/structuralModel';
 
 // 그리드 스냅: g>0이면 가장 가까운 격자점으로 반올림
 const snapTo = (v: number, g: number): number => (g > 0 ? Math.round(v / g) * g : v);
@@ -393,13 +393,9 @@ export const Workspace: React.FC = () => {
     if (!model || !t) { canvas.requestRenderAll(); return; }
     const nodeById = new Map(model.nodes.map((n) => [n.id, n]));
 
-    // 자유단: 벽/보 전용 차수 ≤ 1 인 끝점 절점
-    const degWB = new Map<string, number>();
-    const inc = (id: string) => degWB.set(id, (degWB.get(id) || 0) + 1);
-    model.walls.forEach((w) => { inc(w.i); inc(w.j); });
-    model.beams.forEach((b) => { inc(b.i); inc(b.j); });
-    degWB.forEach((d, id) => {
-      if (d > 1) return;
+    // 미연결 끝점만 amber 링으로 표시.
+    // ⚠️ 기둥에 붙은 끝·정상 개방단부까지 링을 그리면 진짜 볼 것이 묻힌다(공용 분류 사용).
+    classifyMemberEnds(model).unresolved.forEach((id) => {
       const nd = nodeById.get(id); if (!nd) return;
       const p = worldToCanvas(nd, t);
       const ring = new fabric.Circle({
