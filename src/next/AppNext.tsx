@@ -59,7 +59,9 @@ export const AppNext: React.FC = () => {
     const st = useDrawingStore.getState();
     if (!st.dxfEntities.length || !st.dxfTransform) { alert(n('loadFirst')); return; }
     const entitiesToExtract = filterEntitiesByCrop(st.dxfEntities, st.cropBBox);
-    const { members, grid } = extractStructuralModel(entitiesToExtract, st.dxfLayers, st.dxfTransform, { thicknessProfile: profile, layerTypeOverrides, lineLayerIncludes });
+    const { members, grid, counts } = extractStructuralModel(entitiesToExtract, st.dxfLayers, st.dxfTransform, { thicknessProfile: profile, layerTypeOverrides, lineLayerIncludes });
+    // 품질 점검 하네스용(?debug=1 관례). 프로덕션 동작에는 영향 없음.
+    if (new URLSearchParams(location.search).has('debug')) (window as any).__counts = counts;
     if (members.length === 0) { alert(n('noStruct')); return; }
     st.clearCadLines(); // 이전 추출 부재 제거 → 재추출 시 겹침 방지 (수동 편집은 유지)
     st.addLines(members);
