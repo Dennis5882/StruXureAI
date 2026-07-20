@@ -361,7 +361,10 @@ export const Workspace: React.FC = () => {
 
       // 그리드 버블 라벨·치수 문자 등 원본 CAD 주석 — 원본과 동일하게 배경에 그린다.
       // (DIMENSION은 로드 시 이미 LINE/TEXT로 전개돼 있어(fileLoader expandEntities) 여기 남는 건 예외 케이스뿐)
-      if (type === 'TEXT' || type === 'MTEXT') {
+      // ⚠️ `LAY_FOR_NGEN_*`은 표준 CAD 관례가 아니라 MIDAS Gen NX의 CAD Tracing이 자기 인식용으로
+      //   심어놓은 중복 치수/버블 텍스트 레이어(원본 A-DIM/A-AXN과 값은 같고 위치만 살짝 다름).
+      //   그대로 그리면 같은 숫자가 겹쳐 보인다 → 원본 주석 레이어만 남기고 제외.
+      if ((type === 'TEXT' || type === 'MTEXT') && !/^LAY_FOR_NGEN_/i.test(e.layer || '')) {
         const pos = e.startPoint || e.position;
         const raw = cleanText(e.text);
         if (pos && raw) {
