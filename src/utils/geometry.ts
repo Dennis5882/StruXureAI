@@ -408,7 +408,7 @@ export interface StructModelResult {
   counts: {
     wallAxes: number; columns: number; columnsTagged: number; unpairedFaces: number;
     nodes: number; extended: number; snappedCol: number; wallsLabeled: number; beams: number;
-    quantized: number; beamsLabeled: number;
+    quantized: number; beamsLabeled: number; wallsIdealized: number;
   };
 }
 
@@ -416,7 +416,7 @@ export const extractStructuralModel = (
   entities: any[],
   layers: { name: string; visible: boolean }[],
   t: DxfTransform,
-  opts?: { wallMinMm?: number; wallMaxMm?: number; beamMinMm?: number; beamMaxMm?: number; topology?: boolean; extendMm?: number; nodeMm?: number; thicknessProfile?: ThicknessProfile; layerTypeOverrides?: Record<string, StructureType | 'EXCLUDE'>; lineLayerIncludes?: Record<string, boolean> },
+  opts?: { wallMinMm?: number; wallMaxMm?: number; beamMinMm?: number; beamMaxMm?: number; topology?: boolean; extendMm?: number; nodeMm?: number; thicknessProfile?: ThicknessProfile; layerTypeOverrides?: Record<string, StructureType | 'EXCLUDE'>; lineLayerIncludes?: Record<string, boolean>; idealizeToGrid?: boolean },
 ): StructModelResult => {
   const visible = new Map(layers.map((l) => [l.name, l.visible]));
   const overrides = opts?.layerTypeOverrides ?? {};
@@ -717,6 +717,11 @@ export const extractStructuralModel = (
     else kept.push({ ...c });
   }
 
+  // 그리드 이상화: 통심선에서 벗어난 벽 축선을 그리드 위로 평행이동 (기둥은 이미 위에서 그리드 스냅됨).
+  // ⚠️ 반드시 cleanupTopology '앞'에서 해야 한다 — 끝점이 기둥에 스냅된 뒤에 축선을 옮기면
+  //    그 스냅이 어긋나고, 중간점 기준 판정도 왜곡된다.
+  const wallsIdealized = opts?.idealizeToGrid === false ? 0 : idealizeWallsToGrid(wallAxes, xs, ys, mmPx);
+
   // 위상 정리(P3): 벽 축선 끝점 → 기둥/교차점 연결 + 절점 그래프 (기둥 mm 산출 전, 벽만 변형)
   const topo = opts?.topology === false
     ? { extended: 0, snappedCol: 0, nodes: 0 }
@@ -765,7 +770,7 @@ export const extractStructuralModel = (
     counts: {
       wallAxes: wallsFinal.length, columns: kept.length, columnsTagged: tagged, unpairedFaces: unpaired,
       nodes: topo.nodes, extended: topo.extended, snappedCol: topo.snappedCol, wallsLabeled, beams: beams.length,
-      quantized, beamsLabeled,
+      quantized, beamsLabeled, wallsIdealized,
     },
   };
 };
@@ -809,6 +814,44 @@ export const splitWallsAtJunctions = (walls: StructureLineData[], tol: number): 
     }
   }
   return out;
+};
+
+// ── 그리드 이상화: 그리드축에 나란하고 충분히 가까운 벽의 '축선 전체'를 그 축선 위로 평행이동한다.
+//  왜: 외벽은 그리드가 아니라 외면 기준으로 그려져 축선이 통심선에서 벗어난다(B1F 실측 150mm).
+//  그 상태로 두면 벽이 지나는 기둥과 절점을 공유하지 못해 MIDAS에서 서로 붙지 않은 모델이 된다.
+//  ✅ MIDAS Gen NX 순정 Tracing도 벽을 그리드/기둥 위에 올린다(2026-07-20 API 직접 조회로 확인:
+//     벽 평면절점→최근접기둥 거리가 0mm 아니면 2m 이상, 150mm 같은 중간값이 전무).
+//  ⚠️ 접합 절점만 기둥으로 당기면 안 된다 — 그러면 직선 벽에 킨크가 생긴다. 반드시 축선 '전체'를 옮긴다.
+//  ⚠️ 판정은 "그리드선이 벽 몸통 안에 있는가"(수직거리 ≤ 두께/2, 상한 maxMm)로 한다. 두께에 자동 비례하므로
+//     얇은 벽을 억지로 끌어오지 않는다.
+const idealizeWallsToGrid = (
+  walls: StructureLineData[],
+  xs: { pos: number }[],
+  ys: { pos: number }[],
+  mmPx: number,
+  maxMm = 300,
+): number => {
+  const xpos = xs.map((o) => o.pos), ypos = ys.map((o) => o.pos);
+  if (!xpos.length && !ypos.length) return 0;
+  let moved = 0;
+  for (const w of walls) {
+    const a = w.coordinates[0], b = w.coordinates[1];
+    if (!a || !b) continue;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy); if (len < 1e-6) continue;
+    const thkMm = (w.properties?.thickness_mm as number) ?? 200;
+    const tol = Math.min(thkMm / 2, maxMm) * mmPx;
+    const vertical = Math.abs(dy) > Math.abs(dx);
+    const skew = (vertical ? Math.abs(dx) : Math.abs(dy)) / len;
+    if (skew > 0.03) continue;                       // 사선 벽은 그리드축에 대응시키지 않는다
+    const arr = vertical ? xpos : ypos; if (!arr.length) continue;
+    const mid = vertical ? (a.x + b.x) / 2 : (a.y + b.y) / 2;
+    const n = nearest(mid, arr);
+    if (n.dist > tol || n.dist < 1e-9) continue;
+    if (vertical) { a.x = n.val; b.x = n.val; } else { a.y = n.val; b.y = n.val; }
+    moved++;
+  }
+  return moved;
 };
 
 // ── 부재를 기둥 위치에서 분할: 기둥을 관통하는 중심선을 기둥에서 끊는다.
