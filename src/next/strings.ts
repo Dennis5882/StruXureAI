@@ -5,7 +5,7 @@ import { useDrawingStore } from '../store/useDrawingStore';
 type Lang = 'ko' | 'en' | 'zh';
 
 const DICT: Record<string, Record<Lang, string>> = {
-  badge:        { ko: 'UI v2 · 검토용', en: 'UI v2 · preview', zh: 'UI v2 · 預覽' },
+  badge:        { ko: '학습용', en: 'Preview', zh: '預覽' },
 
   // 스테퍼 단계
   s1:           { ko: '① 도면 열기', en: '① Open', zh: '① 開啟圖面' },
@@ -56,6 +56,8 @@ const DICT: Record<string, Record<Lang, string>> = {
   qNodes:       { ko: '절점', en: 'Nodes', zh: '節點' },
   qMembers:     { ko: '부재', en: 'Members', zh: '構件' },
   qShared:      { ko: '공유 절점', en: 'Shared nodes', zh: '共用節點' },
+  undo:         { ko: '실행취소', en: 'Undo', zh: '復原' },
+  undoTip:      { ko: '마지막으로 추가한 부재를 되돌립니다.', en: 'Undo the last added member.', zh: '復原最後加入的構件。' },
   qFree:        { ko: '미연결', en: 'Unresolved', zh: '未連接' },
   qWalls:       { ko: '벽', en: 'Walls', zh: '牆' },
   qColumns:     { ko: '기둥', en: 'Columns', zh: '柱' },

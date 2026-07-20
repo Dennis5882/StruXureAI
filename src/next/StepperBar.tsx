@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Layers, ImagePlus, FileUp, ArrowRight, Check, BookOpen } from 'lucide-react';
+import { Layers, ImagePlus, FileUp, ArrowRight, Check, BookOpen, Undo2 } from 'lucide-react';
 import { useDrawingStore } from '../store/useDrawingStore';
 import { loadFile } from '../utils/fileLoader';
 import { LANGS, type Lang } from '../i18n';
@@ -20,6 +20,8 @@ export const StepperBar: React.FC<Props> = ({ onExtract, setTab, onToggleManual 
   const backgroundImage = useDrawingStore((s) => s.backgroundImage);
   const dxfEntities = useDrawingStore((s) => s.dxfEntities);
   const model = useDrawingStore((s) => s.model);
+  const lines = useDrawingStore((s) => s.lines);
+  const undoLine = useDrawingStore((s) => s.undoLine);
 
   const cadRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
@@ -70,6 +72,18 @@ export const StepperBar: React.FC<Props> = ({ onExtract, setTab, onToggleManual 
             <button onClick={() => imgRef.current?.click()} className="flex items-center space-x-1.5 text-xs bg-zinc-800 text-zinc-300 px-2 py-1.5 rounded hover:bg-zinc-700 hover:text-white"><ImagePlus size={14} /><span>{n('openImage')}</span></button>
             <button onClick={() => cadRef.current?.click()} className="flex items-center space-x-1.5 text-xs bg-zinc-800 text-zinc-300 px-2 py-1.5 rounded hover:bg-zinc-700 hover:text-white"><FileUp size={14} /><span>{n('openCad')}</span></button>
           </div>
+
+          {/* 실행취소 — 부재 추가/그리기를 되돌린다 (v1 툴바에서 이식) */}
+          <button
+            onClick={undoLine}
+            disabled={lines.length === 0}
+            title={n('undoTip')}
+            className={`flex items-center space-x-1.5 text-xs px-2 py-1.5 rounded ${lines.length === 0
+              ? 'bg-zinc-900 text-zinc-700 cursor-not-allowed'
+              : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white'}`}
+          >
+            <Undo2 size={14} /><span>{n('undo')}</span>
+          </button>
         </div>
 
         <div className="flex items-center space-x-3">

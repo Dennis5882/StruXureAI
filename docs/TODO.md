@@ -54,7 +54,7 @@
 
 ### ⭐ 지금 다음 한 수 (범위 = 모델링+핸드오프, 해석 제외)
 > 자세한 단계는 [ROADMAP.md](./ROADMAP.md). 현재 v0.27.1: 추출(벽96%)→FloorModel(절점그래프)→Gen NX 핸드오프 **동작**.
-> UI v2(`index.next.html`) 검토 중: 5단계 스테퍼·레이어 타입 지정·LINE 확인 배너·검토 탭·하단 상태바 포함. Vercel 배포 완료(`/index.next.html`).
+> **UI v2가 정본**(v0.42.0에서 `index.html`로 승격, v1 제거): 5단계 스테퍼·레이어 타입 지정·LINE 확인 배너·검토 탭·하단 상태바.
 - ~~**U3 검토→수정 루프**~~ ✅ **완료(v0.29~0.30)** — 검토 탭/캔버스 **양방향** 부재 선택+강조, 두께/단면(기둥 b/h/회전·벽 두께·보 폭) 인라인 편집→model 반영, **자유단 amber 링 하이라이트**, **부재 삭제**(삭제버튼·Delete키, model+캔버스 line 동기), **부재 추가**(벽/기둥 그리기→model 편입), **자유단 자동 연결**(≤300mm 근접 자유단 병합, B1F 60→24). store `selectedMemberId`/`updateMember`/`deleteMember`/`addLineToModel`/`autoConnectFreeEnds`, member↔line `lineId` 링크.
 - (이번 세션 추가) 재로드/재추출 겹침 수정(`clearCadLines`), 캔버스 CROP 모드(도면에서 직접 범위 선택), 언어 드롭다운, CTA 정리(추출만).
 - **성능: DXF 정적 배경 렌더링(v0.31.1)** — DXF 엔티티를 Fabric 객체 수만 개 대신 레이어별 Path2D로 배경 캔버스에 한 번에 stroke(뷰포트 동기 `after:render`). tracing 68k에서 fabric 객체 3만→0, 줌/팬 버벅임 해소. 구조부재/오버레이만 Fabric 유지.
@@ -161,6 +161,15 @@
   - **공용화**: 품질 지표(`workflow.modelQuality`)와 캔버스 amber 링(`Workspace`)이 **같은 기준**을 쓰도록 `utils/structuralModel.ts`의 `classifyMemberEnds` 한 곳으로 통일(로직 이중화 방지).
   - **효과**: B1F **38→21**, **tracing 128→27**(헛경고 101개 제거), zg 0 유지. UI는 미연결만 amber, 나머지 둘은 회색 보조 표시.
 
+- **E6 UI v1 제거 · v2를 `index.html`로 승격(v0.42.0)**
+  - 2026-06-28부터 v1(`index.html`)과 v2(`index.next.html`)를 **두 엔트리로 병행**해 왔다. 공용 엔진(`utils/`·`store/`·`Workspace`) 위에 UI 껍데기만 둘이었는데, 오늘처럼 "이 수정이 어느 쪽에 반영됐지?"를 매번 따져야 했다(실제로 E5의 UI 부분은 v2에만 들어갔다).
+  - **제거 전 기능 대조**(중요 — 처음엔 "v2가 완전한 상위집합"이라 판단했으나 **오답이었다**). v1에만 있던 것 5개: AI 분석(`fetchAIAnalysis`) · 중심선 자동 생성(`extractCenterLinesFromWalls`) · 그리드 스냅 설정 · **실행취소** · 도형 그리기(펜/사각/원/삼각/지우개 + 부재타입 선택).
+  - **사용자 판단**: AI 분석은 아이디어 단계, 직접 그리기는 초기 테스트용으로 실사용 가치 낮음 → **실행취소만 이식**하고 나머지는 아이디어로 파킹.
+  - **작업**: ① `undoLine`을 StepperBar에 이식 ② `index.next.html` 내용을 `index.html`로, `main.next.tsx`를 `main.tsx`로 승격 ③ v1 파일 제거(`App.tsx`·`Toolbar`·`LayerSidebar`·`HelpPanel`·`index.next.html`·`main.next.tsx`) ④ `vite.config.ts` 멀티페이지 입력 제거 ⑤ 배지 `UI v2 · 검토용` → `학습용`.
+  - ⚠️ **스토어 필드는 남긴다**: `gridSize`·`aiPolygons`는 **Workspace가 여전히 사용**(격자 렌더·스냅·AI 폴리곤 표시). 유틸 `fetchAIAnalysis`·`extractCenterLinesFromWalls`도 아이디어 보존용으로 유지(미참조라 번들에서 tree-shake됨).
+  - **검증**: 루트 `/`에서 전체 워크플로 동작(B1F 추출 절점131·벽92·기둥60·그리드18), 3탭 전환, 실행취소 버튼 노출. 콘솔 에러 없음(404는 로컬에 없는 Vercel Analytics 스크립트뿐, 기존과 동일).
+  - 📌 **배포 주의**: 기존 `/index.next.html` 북마크는 이제 404다. 루트 `/`로 안내 필요.
+
 
 ### (완료 이력 — 추출·핸드오프)
 1. ~~**[P3] 위상 정리**~~ ✅ **완료(v0.14.0)** — `cleanupTopology`로 끝점→기둥/교차점 연결 + 절점 그래프(`n0/n1`).
@@ -175,7 +184,7 @@
    - 남은 연결성: 자유단 ~39개 중 ~14 정상(개방단부), ~13 근접갭(150-400mm), ~10 코너 미세갭. 추가 개선 여지(저위험 우선).
    - 남은 커버리지 ~4%: 짝 매칭 놓친 면(파트너 있으나 미매칭).
 7. **[P4a] 단일층 MIDAS 내보내기** ✅ **완료(v0.19.0)** — `midasExport.ts`(buildMidasRequests/sendMidas/toPythonScript) + `MidasExport.tsx` 패널. 절점+BEAM/PLATE 요소, CNS560 더미재질.
-9. ~~**UI v2 (워크플로 셸)**~~ ✅ **완료(2026-06-28)** — `index.next.html`+`src/next/` 격리 엔트리. 기존 파일 무수정. Vercel 멀티페이지 빌드 등록(`vite.config.ts` rollupOptions.input).
+9. ~~**UI v2 (워크플로 셸)**~~ ✅ **완료(2026-06-28)** — 처음엔 `index.next.html`+`src/next/` 격리 엔트리로 개발(기존 파일 무수정, Vercel 멀티페이지). → **v0.42.0에서 `index.html`로 승격하고 v1 제거**(아래 E6). 이제 엔트리는 하나뿐.
    - **StepperBar**: 5단계 클릭 가능 스테퍼 + "다음 한 수" CTA(워크플로 자동 판단)
    - **RightDock 3탭**: 레이어 탭(타입 지정 드롭다운) / 검토 탭(alert→라이브 품질 카드) / 내보내기 탭
    - **레이어 수동 타입 지정** [`classifyLayer` export + `layerTypeOverrides` opts]: 레이어별 `자동/벽/기둥/보/제외` 드롭다운. override 우선, AUTO면 휴리스틱 폴백.
