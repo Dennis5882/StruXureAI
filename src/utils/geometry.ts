@@ -408,7 +408,7 @@ export interface StructModelResult {
   counts: {
     wallAxes: number; columns: number; columnsTagged: number; unpairedFaces: number;
     nodes: number; extended: number; snappedCol: number; wallsLabeled: number; beams: number;
-    quantized: number; beamsLabeled: number;
+    quantized: number; beamsLabeled: number; colsOnWall: number;
   };
 }
 
@@ -692,11 +692,56 @@ export const extractStructuralModel = (
     }
   }
 
-  // 기둥: 그리드 스냅 + 중복 제거 + gridRef/단면(mm)
-  // ⚠️ mm 기반(scale 환산). 과거 px 고정값(20/10)은 축척에 따라 1m+로 과도 스냅돼 기둥을 오배치시켰음.
+  // 기둥 절점 위치 규칙 (설계 결정):
+  //   ① 기둥을 지나는 벽이 있으면 → **벽 축선 위로** (두 벽이 교차하면 그 교점)
+  //   ② 벽이 없으면 → **기둥 사각의 중심** 그대로
+  // 왜: 기둥과 벽은 흔히 '면을 공유'하도록 그려진다. B1F 하단열 실측 —
+  //   벽 면선 y=-35375/-34875(두께 500) → 벽 중심선 -35125 = CEN 축선과 일치,
+  //   기둥 범위 -35375~-34575(800각) → 기둥 외면이 벽 외면과 같고, 두께 차이 때문에
+  //   기둥 중심이 (800-500)/2 = **150mm 안쪽**에 온다. 이 150mm는 오차가 아니라 실제 구조 조건이다.
+  //   벽이 연속 부재이므로 접합 절점은 **벽 축선을 따라간다**(기둥을 벽 쪽으로 오프셋).
+  // ⚠️ 과거의 '그리드 근접 스냅'은 이 이격(149.7mm)이 허용치(150mm) 경계에 걸려
+  //   같은 열의 기둥 일부만 움직이는 **불일치**를 만들었다. 도면은 일관된데 우리가 깨뜨린 것.
+  //   그래서 그리드 스냅은 **벽이 없는 기둥에만** 적용한다.
   const SNAP = 150 * mmPx, DEDUP = 120 * mmPx; // 그리드 근접(≤150mm)만 스냅, 중복(≤120mm)만 병합
   const xpos = xs.map((o) => o.pos), ypos = ys.map((o) => o.pos);
+  const axisSegs = wallAxes
+    .map((w) => [w.coordinates[0], w.coordinates[1]] as [Point2D, Point2D])
+    .filter(([a, b]) => a && b && getDistance(a, b) > 1e-6);
+  let colsOnWall = 0;
   for (const c of cols) {
+    const P = { x: c.cx, y: c.cy };
+    const reach = Math.max(c.w, c.h) / 2; // 축선이 기둥 footprint를 지나는가
+    const hits: [Point2D, Point2D][] = [];
+    for (const [A, B] of axisSegs) {
+      const t = projParam(P, A, B);
+      if (t < -0.02 || t > 1.02) continue;              // 축선 '몸통'을 지나는 것만
+      if (getDistance(P, perpFoot(P, A, B)) > reach) continue;
+      hits.push([A, B]);
+    }
+    if (hits.length) {
+      // 서로 직교하는 두 축선이 지나면 그 교점(코너 기둥), 아니면 가장 가까운 축선 위 수직발
+      let placed: Point2D | null = null;
+      for (let i = 0; i < hits.length && !placed; i++) {
+        for (let j = i + 1; j < hits.length; j++) {
+          let ad = Math.abs(getAngle(hits[i][0], hits[i][1]) - getAngle(hits[j][0], hits[j][1]));
+          if (ad > Math.PI / 2) ad = Math.PI - ad;
+          if (ad < 0.3) continue;                        // 거의 평행 → 교점이 무의미
+          const X = lineIntersect(hits[i][0], hits[i][1], hits[j][0], hits[j][1]);
+          if (X && getDistance(P, X) <= reach) { placed = X; break; }
+        }
+      }
+      if (!placed) {
+        let best: Point2D | null = null, bd = Infinity;
+        for (const [A, B] of hits) {
+          const f = perpFoot(P, A, B), d = getDistance(P, f);
+          if (d < bd) { bd = d; best = f; }
+        }
+        placed = best;
+      }
+      if (placed) { c.cx = placed.x; c.cy = placed.y; colsOnWall++; continue; }
+    }
+    // ② 벽이 없는 기둥만 그리드 스냅 (독립 기둥의 축 정렬 보정)
     if (xpos.length) { const n = nearest(c.cx, xpos); if (n.dist <= SNAP) c.cx = n.val; }
     if (ypos.length) { const n = nearest(c.cy, ypos); if (n.dist <= SNAP) c.cy = n.val; }
   }
@@ -765,7 +810,7 @@ export const extractStructuralModel = (
     counts: {
       wallAxes: wallsFinal.length, columns: kept.length, columnsTagged: tagged, unpairedFaces: unpaired,
       nodes: topo.nodes, extended: topo.extended, snappedCol: topo.snappedCol, wallsLabeled, beams: beams.length,
-      quantized, beamsLabeled,
+      quantized, beamsLabeled, colsOnWall,
     },
   };
 };
