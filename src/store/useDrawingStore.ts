@@ -4,6 +4,15 @@ import { FloorModel, SColumn, SWall, SBeam } from '../types/structural';
 import { incorporateLine, autoConnectFreeEnds as autoConnectFreeEndsPure } from '../utils/structuralModel';
 import type { ScaleAnalysis } from '../utils/drawingScale';
 
+// id로 model에서 부재 하나를 제거(기둥/벽/보 어느 쪽인지 모를 때도 동작).
+// deleteMember·undoLine 둘 다 "모델에서 부재 하나를 뗀다"는 같은 일을 하므로 공용화.
+const removeModelMember = (m: FloorModel, id: string): FloorModel => ({
+  ...m,
+  columns: m.columns.filter((c) => c.id !== id),
+  walls: m.walls.filter((w) => w.id !== id),
+  beams: m.beams.filter((b) => b.id !== id),
+});
+
 /**
  * 적용할 축척 배율(기하 ÷ 참값). 사용자 오버라이드 > 자동판정 > 1(보정 안함).
  * ⚠️ UI 표시와 실제 좌표 변환이 갈라지지 않도록 반드시 이 함수 하나만 쓸 것.
@@ -216,12 +225,7 @@ export const useDrawingStore = create<DrawingState>((set) => ({
     const hit = [...m.columns, ...m.walls, ...m.beams].find((it) => it.id === id);
     const lineId = (hit as any)?.lineId as string | undefined;
     return {
-      model: {
-        ...m,
-        columns: m.columns.filter((c) => c.id !== id),
-        walls: m.walls.filter((w) => w.id !== id),
-        beams: m.beams.filter((b) => b.id !== id),
-      },
+      model: removeModelMember(m, id),
       // 원본 캔버스 line 도 함께 제거 (있으면)
       lines: lineId ? state.lines.filter((l) => l.id !== lineId) : state.lines,
       selectedMemberId: state.selectedMemberId === id ? null : state.selectedMemberId,
@@ -266,7 +270,20 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   addLines: (newLines) => set((state) => ({ lines: [...state.lines, ...newLines] })),
   undoLine: () => set((state) => {
     if (state.lines.length === 0) return state;
-    return { lines: state.lines.slice(0, -1) };
+    const last = state.lines[state.lines.length - 1];
+    const lines = state.lines.slice(0, -1);
+    // ⚠️ 되돌릴 line이 구조모델 부재와 lineId로 연결돼 있으면 모델에서도 같이 뗀다.
+    //    line만 지우면 캔버스에서는 사라지는데 model(부재수·검토 목록·MIDAS 내보내기)엔
+    //    그대로 남아 "유령 부재"가 생긴다 — 특히 추출 직후 바로 실행취소하면 매번 재현됨.
+    if (!state.model) return { lines };
+    const hit = [...state.model.columns, ...state.model.walls, ...state.model.beams]
+      .find((it: any) => it.lineId === last.id);
+    if (!hit) return { lines };
+    return {
+      lines,
+      model: removeModelMember(state.model, hit.id),
+      selectedMemberId: state.selectedMemberId === hit.id ? null : state.selectedMemberId,
+    };
   }),
   updateLine: (id, updatedData) => set((state) => ({
     lines: state.lines.map((line) => line.id === id ? { ...line, ...updatedData } : line),

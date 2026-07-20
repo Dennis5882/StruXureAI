@@ -692,7 +692,30 @@ export const extractStructuralModel = (
     }
   }
 
-  // 기둥 절점 위치 규칙 (설계 결정):
+  const SNAP = 150 * mmPx, DEDUP = 120 * mmPx; // 그리드 근접(≤150mm)만 스냅, 중복(≤120mm)만 병합
+
+  // 기둥 타당성 필터 + 중복 제거: 벽구간·철근·치수선이 기둥으로 오인되는 것 차단(단면 mm 기준),
+  // 근접 중복은 병합. ⚠️ 반드시 아래 '벽 축선 스냅'보다 먼저 — 원본(raw) 좌표로 중복 판정해야 한다.
+  // 같은 물리적 기둥에서 나온 두 원시 후보(w/h가 미세하게 다른 LINE 클러스터 중복 등)를 먼저 스냅해버리면
+  // reach(=max(w,h)/2)가 후보마다 달라 서로 다른 벽/그리드로 흩어질 수 있고, 그러면 DEDUP 거리를
+  // 벗어나 병합되지 않은 채 중복 기둥으로 남는다. 원본 좌표는 항상 서로 가까우므로 먼저 합친다.
+  //   · 최대변 > 3000mm = 기둥이 아니라 벽/전단벽 구간(边缘构件의 긴 것, tracing 800x4200 등)
+  //   · 종횡비 > 6 = 가늘고 긴 선형 = 기둥 아님
+  //   · 최소변 < 50mm = 단선/철근 조각 노이즈
+  const plausibleCol = (c: { w: number; h: number }): boolean => {
+    const wmm = toMm(c.w), hmm = toMm(c.h);
+    const lo = Math.min(wmm, hmm), hi = Math.max(wmm, hmm);
+    return hi <= 3000 && lo >= 50 && hi / Math.max(lo, 1) <= 6;
+  };
+  const kept: Col[] = [];
+  for (const c of cols) {
+    if (!plausibleCol(c)) continue;
+    const dup = kept.find((k) => Math.hypot(k.cx - c.cx, k.cy - c.cy) <= DEDUP);
+    if (dup) { dup.w = Math.max(dup.w, c.w); dup.h = Math.max(dup.h, c.h); }
+    else kept.push({ ...c });
+  }
+
+  // 기둥 절점 위치 규칙 (설계 결정, 중복 제거된 `kept`에 적용):
   //   ① 기둥을 지나는 벽이 있으면 → **벽 축선 위로** (두 벽이 교차하면 그 교점)
   //   ② 벽이 없으면 → **기둥 사각의 중심** 그대로
   // 왜: 기둥과 벽은 흔히 '면을 공유'하도록 그려진다. B1F 하단열 실측 —
@@ -703,13 +726,12 @@ export const extractStructuralModel = (
   // ⚠️ 과거의 '그리드 근접 스냅'은 이 이격(149.7mm)이 허용치(150mm) 경계에 걸려
   //   같은 열의 기둥 일부만 움직이는 **불일치**를 만들었다. 도면은 일관된데 우리가 깨뜨린 것.
   //   그래서 그리드 스냅은 **벽이 없는 기둥에만** 적용한다.
-  const SNAP = 150 * mmPx, DEDUP = 120 * mmPx; // 그리드 근접(≤150mm)만 스냅, 중복(≤120mm)만 병합
   const xpos = xs.map((o) => o.pos), ypos = ys.map((o) => o.pos);
   const axisSegs = wallAxes
     .map((w) => [w.coordinates[0], w.coordinates[1]] as [Point2D, Point2D])
     .filter(([a, b]) => a && b && getDistance(a, b) > 1e-6);
   let colsOnWall = 0;
-  for (const c of cols) {
+  for (const c of kept) {
     const P = { x: c.cx, y: c.cy };
     const reach = Math.max(c.w, c.h) / 2; // 축선이 기둥 footprint를 지나는가
     const hits: [Point2D, Point2D][] = [];
@@ -744,22 +766,6 @@ export const extractStructuralModel = (
     // ② 벽이 없는 기둥만 그리드 스냅 (독립 기둥의 축 정렬 보정)
     if (xpos.length) { const n = nearest(c.cx, xpos); if (n.dist <= SNAP) c.cx = n.val; }
     if (ypos.length) { const n = nearest(c.cy, ypos); if (n.dist <= SNAP) c.cy = n.val; }
-  }
-  // 기둥 타당성 필터: 벽구간·철근·치수선이 기둥으로 오인되는 것 차단. 단면(mm)으로 판정.
-  //   · 최대변 > 3000mm = 기둥이 아니라 벽/전단벽 구간(边缘构件의 긴 것, tracing 800x4200 등)
-  //   · 종횡비 > 6 = 가늘고 긴 선형 = 기둥 아님
-  //   · 최소변 < 50mm = 단선/철근 조각 노이즈
-  const plausibleCol = (c: { w: number; h: number }): boolean => {
-    const wmm = toMm(c.w), hmm = toMm(c.h);
-    const lo = Math.min(wmm, hmm), hi = Math.max(wmm, hmm);
-    return hi <= 3000 && lo >= 50 && hi / Math.max(lo, 1) <= 6;
-  };
-  const kept: Col[] = [];
-  for (const c of cols) {
-    if (!plausibleCol(c)) continue;
-    const dup = kept.find((k) => Math.hypot(k.cx - c.cx, k.cy - c.cy) <= DEDUP);
-    if (dup) { dup.w = Math.max(dup.w, c.w); dup.h = Math.max(dup.h, c.h); }
-    else kept.push({ ...c });
   }
 
   // 위상 정리(P3): 벽 축선 끝점 → 기둥/교차점 연결 + 절점 그래프 (기둥 mm 산출 전, 벽만 변형)

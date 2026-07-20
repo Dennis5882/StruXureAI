@@ -138,7 +138,15 @@ export interface EndClassification {
   atColumn: Set<string>;   // ⚪ 기둥 절점에 붙음 — 연결됨
   open: Set<string>;       // ✅ 주변에 상대 없음 — 개구부/외곽(정상)
 }
+// BottomBar·RightDock·ReviewTab(=modelQuality 경유)·Workspace 캔버스 오버레이가 같은 model에
+// 대해 매 렌더마다 각자 이 함수를 다시 호출한다. model은 항상 불변(변경 시 새 객체, no-op이면
+// 같은 참조 반환 — incorporateLine/autoConnectFreeEnds/updateMember/deleteMember 전부 이 규칙을
+// 지킨다)이므로, 참조를 키로 캐시하면 다시 계산하지 않고 재사용할 수 있다. model이 바뀌면
+// 새 참조라 자연히 캐시 미스 → 재계산, 옛 참조는 아무도 안 쓰면 GC됨(WeakMap이라 수동 무효화 불필요).
+const endClassCache = new WeakMap<FloorModel, EndClassification>();
 export const classifyMemberEnds = (m: FloorModel): EndClassification => {
+  const cached = endClassCache.get(m);
+  if (cached) return cached;
   const res: EndClassification = { unresolved: new Set(), atColumn: new Set(), open: new Set() };
   const deg = new Map<string, number>();
   const inc = (id: string) => deg.set(id, (deg.get(id) || 0) + 1);
@@ -172,6 +180,7 @@ export const classifyMemberEnds = (m: FloorModel): EndClassification => {
     }
     (near ? res.unresolved : res.open).add(id);
   });
+  endClassCache.set(m, res);
   return res;
 };
 
