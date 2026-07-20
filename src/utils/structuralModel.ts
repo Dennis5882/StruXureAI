@@ -33,14 +33,34 @@ export const buildStructuralModel = (
   opts?: { name?: string; sourceFile?: string },
 ): FloorModel => {
   const nodes: SNode[] = [];
-  const nmap = new Map<string, string>();
   const r1 = (n: number) => Math.round(n * 10) / 10;
+
+  // 절점 병합: 반경 NODE_TOL(mm) 안의 기존 절점에 스냅.
+  // ⚠️ 예전엔 `Math.round(x),Math.round(y)` 반올림 '버킷'이었는데, 버킷은 tolerance가 아니다 —
+  //    2.3mm 떨어진 두 끝점은 영원히 안 만나고, 0.6mm 차이도 반올림 경계를 걸치면 갈라진다.
+  //    분할(splitLinesAtColumns/splitWallsAtJunctions)이 보간으로 만드는 좌표가 정확히 이 오차대라
+  //    접합부가 통째로 자유단으로 남았다(B1F 자유단 58 중 23건). incorporateLine은 이미 반경
+  //    방식이었으므로 두 경로의 규칙도 통일된다.
+  // 격자 해시(칸=NODE_TOL)로 3×3 이웃만 검사 → 대형 도면에서도 선형.
+  const NODE_TOL = 5;
+  const buckets = new Map<string, SNode[]>();
+  const bkey = (x: number, y: number) => `${Math.floor(x / NODE_TOL)},${Math.floor(y / NODE_TOL)}`;
   const nodeId = (p: Point2D): string => {
     const w = canvasToWorld(p, t);
-    const key = `${Math.round(w.x)},${Math.round(w.y)}`; // 1mm 반올림 통합
-    const hit = nmap.get(key); if (hit) return hit;
-    const id = `n${nodes.length + 1}`; nmap.set(key, id);
-    nodes.push({ id, x: r1(w.x), y: r1(w.y) }); return id;
+    const bx = Math.floor(w.x / NODE_TOL), by = Math.floor(w.y / NODE_TOL);
+    let best: SNode | null = null, bestD = NODE_TOL;
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      for (const n of buckets.get(`${bx + i},${by + j}`) ?? []) {
+        const d = Math.hypot(n.x - w.x, n.y - w.y);
+        if (d <= bestD) { bestD = d; best = n; }
+      }
+    }
+    if (best) return best.id;
+    const node: SNode = { id: `n${nodes.length + 1}`, x: r1(w.x), y: r1(w.y) };
+    nodes.push(node);
+    const k = bkey(node.x, node.y);
+    const arr = buckets.get(k); if (arr) arr.push(node); else buckets.set(k, [node]);
+    return node.id;
   };
 
   const columns: SColumn[] = [];
