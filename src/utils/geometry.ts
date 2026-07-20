@@ -737,8 +737,12 @@ export const extractStructuralModel = (
     if (gl) { w.properties = { ...(w.properties || {}), gridLine: gl }; wallsLabeled++; }
   }
 
-  // T자 접합 절점화: 벽 끝점이 다른 벽 몸통에 닿으면 분할+스냅 → 접합부 좌표 공유(그래프/MIDAS 연결 완성)
-  const wallsFinal = opts?.topology === false ? wallAxes : splitWallsAtJunctions(wallAxes, 220 * mmPx);
+  // 벽 분할: (1) 기둥을 관통하는 벽을 기둥 station에서 분할(축선 위 수직발 — 축선 보존),
+  //   (2) T자 접합 절점화(벽 끝점이 다른 벽 몸통에 닿으면 분할+스냅 → 접합부 좌표 공유).
+  // (1)이 없으면 외곽벽이 한 덩어리로 남아 MIDAS에서 종횡비 20:1급 단일 PLATE가 되고,
+  // 관통하는 기둥들과 절점을 나눌 기회조차 없다. (B1F: 62.9m 벽 1개가 기둥 8개 관통)
+  const wallsFinal = opts?.topology === false ? wallAxes
+    : splitWallsAtJunctions(splitLinesAtColumns(wallAxes, kept, 0, { snapToCenter: false }), 220 * mmPx);
 
   // 보 절점 분할: (1) 기둥을 지나는 보를 기둥 중심에서 끊어 분할점=기둥 중심 → 절점 공유(보-기둥 연결),
   //   (2) 보-보 T자 접합 분할. 결과: 보가 그리드선 따라 한 덩어리로 병합돼 있던 것이 기둥/교차점 단위 스팬으로.
@@ -807,13 +811,21 @@ export const splitWallsAtJunctions = (walls: StructureLineData[], tol: number): 
   return out;
 };
 
-// ── 보를 기둥 중심에서 분할: 기둥을 관통하는 보 중심선을 기둥 위치에서 끊는다.
-//    분할점은 기둥 '중심' 좌표로 스냅 → buildStructuralModel 절점 병합이 기둥 절점과 정확히 공유(보-기둥 연결).
+// ── 부재를 기둥 위치에서 분할: 기둥을 관통하는 중심선을 기둥에서 끊는다.
+//  분할점 위치는 부재 종류에 따라 다르다(`snapToCenter`):
+//   · 보(기본, true)  = 기둥 '중심' 좌표로 스냅. 보 중심선은 개념적으로 기둥 중심에서 만나므로
+//                       스냅해야 buildStructuralModel의 절점 병합(좌표 1mm)이 기둥 절점과 공유된다.
+//   · 벽(false)       = 기둥 중심의 '수직발'(벽 축선 위)로 분할. 벽 축선은 기둥 중심에서 벗어나 있는 게
+//                       정상이라(외벽이 그리드가 아닌 외면 기준으로 그려짐 — B1F 실측 이격 최대 150mm),
+//                       중심으로 스냅하면 직선 외벽에 킨크가 생긴다. 축선을 보존하고 station에서만 끊는다.
+//                       이격이 0인 구간에서는 수직발=기둥 중심이라 절점 공유도 자동으로 성립한다.
 const splitLinesAtColumns = (
   lines: StructureLineData[],
   cols: { cx: number; cy: number; w: number; h: number }[],
   tol: number,
+  opts?: { snapToCenter?: boolean },
 ): StructureLineData[] => {
+  const snapToCenter = opts?.snapToCenter ?? true;
   if (!cols.length) return lines;
   const out: StructureLineData[] = [];
   for (const L of lines) {
@@ -823,9 +835,9 @@ const splitLinesAtColumns = (
     for (const c of cols) {
       const P = { x: c.cx, y: c.cy };
       const f = perpFoot(P, A, B);
-      if (getDistance(P, f) > Math.max(c.w, c.h) / 2 + tol) continue; // 보 중심선이 기둥 footprint를 지나는가
+      if (getDistance(P, f) > Math.max(c.w, c.h) / 2 + tol) continue; // 중심선이 기둥 footprint를 지나는가
       const t = projParam(P, A, B);
-      if (t > 0.02 && t < 0.98) cuts.push({ t, p: P }); // 내부만(끝점 근처는 이미 절점)
+      if (t > 0.02 && t < 0.98) cuts.push({ t, p: snapToCenter ? P : f }); // 내부만(끝점 근처는 이미 절점)
     }
     if (!cuts.length) { out.push(L); continue; }
     cuts.sort((a, b) => a.t - b.t);
