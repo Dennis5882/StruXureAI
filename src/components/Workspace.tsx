@@ -539,7 +539,9 @@ export const Workspace: React.FC = () => {
           if (t.rot) ctx.rotate(t.rot);
           ctx.font = `${t.heightPx}px sans-serif`;
           ctx.fillStyle = t.color;
-          ctx.fillText(t.text, 0, 0);
+          // MTEXT 문단 구분(\P → \n)이 있으면 줄마다 아래로 내려 그린다(안 그러면 겹쳐 보임)
+          const lines = t.text.split('\n');
+          lines.forEach((line, i) => ctx.fillText(line, 0, i * t.heightPx * 1.2));
           ctx.restore();
         }
       }

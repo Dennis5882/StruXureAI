@@ -125,7 +125,11 @@ export const parseBeamLabel = (text: string): BeamLabel | null => {
 const isAxisLayer = (name: string): boolean => /AXIS|AXN|GRID|CEN|축|통|軸|轴|通|网/i.test(name || '');
 // 축 버블(통심부호) 레이어
 const isBubbleLayer = (name: string): boolean => /BUBBLE|버블|통.?부호|軸符|通り符/i.test(name || '');
-export const cleanText = (s: string): string => (s || '').replace(/\\[A-Za-z][^;]*;|[{}]/g, '').trim();
+export const cleanText = (s: string): string =>
+  (s || '')
+    .replace(/\\P/g, '\n') // MTEXT 문단 구분자(그룹코드 250 값의 \P)를 줄바꿈으로 변환
+    .replace(/\\[A-Za-z][^;]*;|[{}]/g, '')
+    .trim();
 
 const entityPoints = (e: any): Point2D[] => {
   if (Array.isArray(e.vertices) && e.vertices.length) return e.vertices;

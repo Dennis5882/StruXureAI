@@ -53,6 +53,9 @@ const transformEntity = (e: any, m: Mat): any => {
   // 호/타원 각도에 회전량 더함 (라디안 가정; 도 단위면 Workspace의 toRad가 보정)
   if (typeof e.startAngle === 'number') out.startAngle = e.startAngle + rot;
   if (typeof e.endAngle === 'number') out.endAngle = e.endAngle + rot;
+  // TEXT/MTEXT/INSERT의 자체 회전각(도 단위, DXF group 50)에도 블록 회전을 더해야
+  // 블록 안에 회전되어 삽입된 텍스트(예: 회전된 그리드 버블)가 원래 각도로 그려진다.
+  if (typeof e.rotation === 'number') out.rotation = e.rotation + (rot * 180) / Math.PI;
   return out;
 };
 
