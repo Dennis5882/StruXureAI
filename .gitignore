@@ -144,3 +144,8 @@ vite.config.ts.timestamp-*
 
 # 프로젝트와 무관한 잡동사니 보관용 (PPT/영상/스크린샷/타 저장소 클론 등)
 _archive/
+
+# 사내 내부자료 / 대용량 테스트 도면 — 절대 커밋하지 않음 (비공개 사업계획·라이선스 미상 샘플 등)
+dwg sample/
+UI Advice/
+docs/*.pptx
