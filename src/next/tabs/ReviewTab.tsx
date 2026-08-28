@@ -1,8 +1,35 @@
-import React from 'react';
-import { AlertTriangle, Pencil, Trash2, Plus, Link2 } from 'lucide-react';
-import { useDrawingStore } from '../../store/useDrawingStore';
+import React, { useState } from 'react';
+import { AlertTriangle, Pencil, Trash2, Plus, Link2, Copy } from 'lucide-react';
+import { useDrawingStore, MemberPatch } from '../../store/useDrawingStore';
 import { modelQuality } from '../workflow';
 import { useNext } from '../strings';
+
+// 편집 필드가 이전에 가지고 있던 값과 같은 값을 가진 다른 부재들 — "유사 패턴 일괄 적용" 후보.
+type BulkCandidate = { anchorId: string; ids: string[]; patch: MemberPatch; oldVal: number; newVal: number };
+
+// 판정 근거: 원본 레이어명 + 라벨/단일선/양자화 여부. 데이터는 이미 추출 단계에서 갖고 있던 것을
+// 검토 탭에 노출만 하는 것 — 새로 만든 "신뢰도 점수"가 아니라 실제 근거 그대로.
+const Evidence: React.FC<{ n: (k: any) => string; layer?: string; lines: string[] }> = ({ n, layer, lines }) => {
+  if (!layer && !lines.length) return null;
+  return (
+    <div className="w-full px-2 pb-1.5 pt-1 mt-0.5 border-t border-zinc-800/70 text-[10px] text-zinc-500 space-y-0.5">
+      {layer && <div>{n('evFrom').replace('{layer}', layer)}</div>}
+      {lines.map((l, i) => <div key={i}>{l}</div>)}
+    </div>
+  );
+};
+
+// 유사값 일괄 적용 배너: 방금 바꾼 값과 이전에 같은 값을 가졌던 다른 부재가 있으면 제안.
+const BulkBanner: React.FC<{ n: (k: any) => string; c: BulkCandidate; onApply: () => void; onDismiss: () => void }> = ({ n, c, onApply, onDismiss }) => (
+  <div className="w-full mx-2 mb-1.5 flex items-start gap-1.5 text-[10px] text-indigo-200/90 bg-indigo-500/10 border border-indigo-500/25 rounded px-2 py-1.5">
+    <Copy size={11} className="mt-0.5 shrink-0" />
+    <span className="flex-1">{n('bulkAsk').replace('{n}', String(c.ids.length)).replace('{old}', String(c.oldVal)).replace('{new}', String(c.newVal))}</span>
+    <div className="flex gap-1 shrink-0">
+      <button onClick={onApply} className="text-indigo-200 font-medium hover:text-indigo-100 underline underline-offset-2">{n('bulkApply')}</button>
+      <button onClick={onDismiss} className="text-zinc-500 hover:text-zinc-300">{n('bulkDismiss')}</button>
+    </div>
+  </div>
+);
 
 const Stat: React.FC<{ label: string; value: React.ReactNode; tone?: 'ok' | 'warn' | 'neutral' }> = ({ label, value, tone = 'neutral' }) => {
   const color = tone === 'ok' ? 'text-emerald-300' : tone === 'warn' ? 'text-amber-300' : 'text-zinc-100';
@@ -34,11 +61,27 @@ export const ReviewTab: React.FC = () => {
   const selectedMemberId = useDrawingStore((s) => s.selectedMemberId);
   const setSelectedMemberId = useDrawingStore((s) => s.setSelectedMemberId);
   const updateMember = useDrawingStore((s) => s.updateMember);
+  const updateMembers = useDrawingStore((s) => s.updateMembers);
   const deleteMember = useDrawingStore((s) => s.deleteMember);
   const setType = useDrawingStore((s) => s.setType);
   const setMode = useDrawingStore((s) => s.setMode);
   const autoConnectFreeEnds = useDrawingStore((s) => s.autoConnectFreeEnds);
   const q = modelQuality(model);
+
+  // 방금 값을 바꾼 부재와, 바꾸기 전 같은 값을 가졌던 다른 부재들(있으면 일괄 적용 제안).
+  const [pendingBulk, setPendingBulk] = useState<BulkCandidate | null>(null);
+  // arr = 같은 종류의 부재 목록(columns/walls/beams), field = 이번에 바뀐 숫자 필드.
+  const editField = <T extends { id: string }>(arr: T[], id: string, field: string, prevVal: number, v: number) => {
+    updateMember(id, { [field]: v } as MemberPatch);
+    if (v === prevVal) return;
+    const ids = arr.filter((it) => it.id !== id && (it as any)[field] === prevVal).map((it) => it.id);
+    setPendingBulk(ids.length ? { anchorId: id, ids, patch: { [field]: v } as MemberPatch, oldVal: prevVal, newVal: v } : null);
+  };
+  const applyBulk = () => {
+    if (!pendingBulk) return;
+    updateMembers(pendingBulk.ids, pendingBulk.patch);
+    setPendingBulk(null);
+  };
 
   const startAdd = (type: 'WALL' | 'COLUMN') => {
     setType(type);
@@ -150,12 +193,16 @@ export const ReviewTab: React.FC = () => {
                     <span className="text-zinc-500">{c.width}×{c.depth}{c.rotation ? ` · ${c.rotation}°` : ''}</span>
                   </button>
                   {sel && (
-                    <div className="flex flex-wrap gap-2 px-2 pb-2 pt-0.5">
-                      <NumField label={n('edWidth')} value={c.width} onChange={(v) => updateMember(c.id, { width: v })} />
-                      <NumField label={n('edDepth')} value={c.depth} onChange={(v) => updateMember(c.id, { depth: v })} />
-                      <NumField label={n('edRot')} value={c.rotation} onChange={(v) => updateMember(c.id, { rotation: v })} />
-                      {delBtn(c.id)}
-                    </div>
+                    <>
+                      <div className="flex flex-wrap gap-2 px-2 pb-2 pt-0.5">
+                        <NumField label={n('edWidth')} value={c.width} onChange={(v) => editField(model.columns, c.id, 'width', c.width, v)} />
+                        <NumField label={n('edDepth')} value={c.depth} onChange={(v) => editField(model.columns, c.id, 'depth', c.depth, v)} />
+                        <NumField label={n('edRot')} value={c.rotation} onChange={(v) => updateMember(c.id, { rotation: v })} />
+                        {delBtn(c.id)}
+                      </div>
+                      {pendingBulk?.anchorId === c.id && <BulkBanner n={n} c={pendingBulk} onApply={applyBulk} onDismiss={() => setPendingBulk(null)} />}
+                      <Evidence n={n} layer={c.sourceLayer} lines={[]} />
+                    </>
                   )}
                 </div>
               );
@@ -178,10 +225,18 @@ export const ReviewTab: React.FC = () => {
                     <span className="text-zinc-500">t{w.thickness}</span>
                   </button>
                   {sel && (
-                    <div className="flex flex-wrap gap-2 px-2 pb-2 pt-0.5">
-                      <NumField label={n('edThick')} value={w.thickness} onChange={(v) => updateMember(w.id, { thickness: v })} />
-                      {delBtn(w.id)}
-                    </div>
+                    <>
+                      <div className="flex flex-wrap gap-2 px-2 pb-2 pt-0.5">
+                        <NumField label={n('edThick')} value={w.thickness} onChange={(v) => editField(model.walls, w.id, 'thickness', w.thickness, v)} />
+                        {delBtn(w.id)}
+                      </div>
+                      {pendingBulk?.anchorId === w.id && <BulkBanner n={n} c={pendingBulk} onApply={applyBulk} onDismiss={() => setPendingBulk(null)} />}
+                      <Evidence n={n} layer={w.sourceLayer} lines={[
+                        ...(w.singleLine ? [n('evSingle')] : []),
+                        ...(typeof w.thicknessMeasured === 'number' && w.thicknessMeasured !== w.thickness
+                          ? [n('evQuantized').replace('{m}', String(w.thicknessMeasured)).replace('{v}', String(w.thickness))] : []),
+                      ]} />
+                    </>
                   )}
                 </div>
               );
@@ -211,11 +266,20 @@ export const ReviewTab: React.FC = () => {
                     </span>
                   </button>
                   {sel && (
-                    <div className="flex flex-wrap gap-2 px-2 pb-2 pt-0.5">
-                      <NumField label={n('edBeamW')} value={b.width} onChange={(v) => updateMember(b.id, { width: v })} />
-                      <NumField label={n('edBeamD')} value={b.depth ?? 0} onChange={(v) => updateMember(b.id, { depth: v })} />
-                      {delBtn(b.id)}
-                    </div>
+                    <>
+                      <div className="flex flex-wrap gap-2 px-2 pb-2 pt-0.5">
+                        <NumField label={n('edBeamW')} value={b.width} onChange={(v) => editField(model.beams, b.id, 'width', b.width, v)} />
+                        <NumField label={n('edBeamD')} value={b.depth ?? 0} onChange={(v) => editField(model.beams, b.id, 'depth', b.depth ?? 0, v)} />
+                        {delBtn(b.id)}
+                      </div>
+                      {pendingBulk?.anchorId === b.id && <BulkBanner n={n} c={pendingBulk} onApply={applyBulk} onDismiss={() => setPendingBulk(null)} />}
+                      <Evidence n={n} layer={b.sourceLayer} lines={[
+                        ...(b.fromLabel ? [n('evLabel')] : []),
+                        ...(b.singleLine ? [n('evSingle')] : []),
+                        ...(typeof b.widthMeasured === 'number' && b.widthMeasured !== b.width
+                          ? [n('evQuantized').replace('{m}', String(b.widthMeasured)).replace('{v}', String(b.width))] : []),
+                      ]} />
+                    </>
                   )}
                 </div>
               );

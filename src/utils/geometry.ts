@@ -309,7 +309,8 @@ const quantizeTo = (mm: number, table: number[], tolMm: number): number => {
 };
 
 // ── 면쌍 매칭: 근평행 + 두께범위 + 길이중첩인 두 면선 → 중심 축선 + 수직두께(px) ──
-interface Face { a: Point2D; b: Point2D; }
+// layer = 원본 DXF 레이어명(판정 근거 표시용). 병합/매칭을 거쳐도 대표 면의 값을 그대로 이어받는다.
+interface Face { a: Point2D; b: Point2D; layer?: string; }
 
 // 동일선상으로 조각난 면선들을 하나의 긴 면선으로 병합 (CAD가 교차부/개구부에서 끊어 그린 것 복원).
 // 매칭 '전'에 적용 → 짧은 조각들이 짝을 못 찾아 버려지던 문제 완화. perpTol < 최소 벽두께라 마주보는 면은 안 합쳐짐.
@@ -345,13 +346,13 @@ const mergeCollinearFaces = (faces: Face[], perpTol: number, gapTol: number, ang
       const tt = projParam(p, D.a, D.b), foot = perpFoot(p, D.a, D.b);
       if (tt < lo) { lo = tt; loP = foot; } if (tt > hi) { hi = tt; hiP = foot; }
     }
-    out.push({ a: loP, b: hiP });
+    out.push({ a: loP, b: hiP, layer: D.layer });
   }
   return out;
 };
 const pairFaces = (
   faces: Face[], minPx: number, maxPx: number,
-): { axes: { p1: Point2D; p2: Point2D; thickPx: number }[]; unpaired: number; used: Set<number> } => {
+): { axes: { p1: Point2D; p2: Point2D; thickPx: number; layer?: string }[]; unpaired: number; used: Set<number> } => {
   const n = faces.length;
   const angle = faces.map((f) => getAngle(f.a, f.b));
   const mid = faces.map((f) => getMidpoint(f.a, f.b));
@@ -367,11 +368,11 @@ const pairFaces = (
     return ov <= 0.05 ? Infinity : d;
   };
   const used = new Array(n).fill(false);
-  const axes: { p1: Point2D; p2: Point2D; thickPx: number }[] = [];
+  const axes: { p1: Point2D; p2: Point2D; thickPx: number; layer?: string }[] = [];
   const mkAxis = (i: number, j: number, d: number) => {
     used[i] = used[j] = true;
     const A = faces[i], B = faces[j];
-    axes.push({ p1: getMidpoint(A.a, perpFoot(A.a, B.a, B.b)), p2: getMidpoint(A.b, perpFoot(A.b, B.a, B.b)), thickPx: d });
+    axes.push({ p1: getMidpoint(A.a, perpFoot(A.a, B.a, B.b)), p2: getMidpoint(A.b, perpFoot(A.b, B.a, B.b)), thickPx: d, layer: A.layer });
   };
 
   // 1) 상호 최근접(mutual-nearest) 반복: 서로가 서로의 가장 가까운 파트너일 때만 짝지어
@@ -474,7 +475,7 @@ export const extractStructuralModel = (
     }
     const et = (e.type || '').toUpperCase();
     const target = cls === 'BEAM' ? beamFaces : faces;
-    const add = (p1: Point2D, p2: Point2D) => target.push({ a: { x: tx(p1.x), y: ty(p1.y) }, b: { x: tx(p2.x), y: ty(p2.y) } });
+    const add = (p1: Point2D, p2: Point2D) => target.push({ a: { x: tx(p1.x), y: ty(p1.y) }, b: { x: tx(p2.x), y: ty(p2.y) }, layer: e.layer });
     if (et === 'LINE' && Array.isArray(e.vertices) && e.vertices.length >= 2) add(e.vertices[0], e.vertices[1]);
     else if ((et === 'LWPOLYLINE' || et === 'POLYLINE') && Array.isArray(e.vertices) && e.vertices.length >= 2) {
       for (let i = 0; i < e.vertices.length - 1; i++) add(e.vertices[i], e.vertices[i + 1]);
@@ -557,7 +558,7 @@ export const extractStructuralModel = (
   const rawAxes: StructureLineData[] = wp.axes.map((ax) => ({
     id: nid('wall'), source: 'CAD', type: 'WALL', shape: 'line',
     coordinates: [ax.p1, ax.p2],
-    thickness: 2, properties: { fromCad: true, isAxis: true, thickness_mm: round5(toMm(ax.thickPx)) },
+    thickness: 2, properties: { fromCad: true, isAxis: true, thickness_mm: round5(toMm(ax.thickPx)), layer: ax.layer },
   }));
 
   // 단일선 벽 회복: 짝 못 찾은 '긴' 면선 중 기존 축선에 안 덮인 것 → 중심선으로 채택(기본두께=측정 중앙값).
@@ -602,7 +603,7 @@ export const extractStructuralModel = (
     rawAxes.push({
       id: nid('wall'), source: 'CAD', type: 'WALL', shape: 'line',
       coordinates: [F.a, F.b],
-      thickness: 2, properties: { fromCad: true, isAxis: true, singleLine: true, thickness_mm: round5(toMm(medThickPx)) },
+      thickness: 2, properties: { fromCad: true, isAxis: true, singleLine: true, thickness_mm: round5(toMm(medThickPx)), layer: F.layer },
     });
     singleLine++;
   }
@@ -620,7 +621,7 @@ export const extractStructuralModel = (
   const rawBeams: StructureLineData[] = bp.axes.map((ax) => ({
     id: nid('beam'), source: 'CAD', type: 'BEAM', shape: 'line',
     coordinates: [ax.p1, ax.p2],
-    thickness: 2, properties: { fromCad: true, isAxis: true, width_mm: round5(toMm(ax.thickPx)) },
+    thickness: 2, properties: { fromCad: true, isAxis: true, width_mm: round5(toMm(ax.thickPx)), layer: ax.layer },
   }));
   // 단일선 보의 폭 기본값 = 이 도면에서 실측된 이중선 보 폭의 중앙값(없으면 300).
   //   고정 300 대신 도면 실제 보 크기에 맞춰 추정 → 스팬 폭 일관성↑ (벽의 medThickPx와 동일 접근).
@@ -634,7 +635,7 @@ export const extractStructuralModel = (
     rawBeams.push({
       id: nid('beam'), source: 'CAD', type: 'BEAM', shape: 'line',
       coordinates: [F.a, F.b],
-      thickness: 2, properties: { fromCad: true, isAxis: true, singleLine: true, width_mm: medBeamWidthMm, widthEstimated: true },
+      thickness: 2, properties: { fromCad: true, isAxis: true, singleLine: true, width_mm: medBeamWidthMm, widthEstimated: true, layer: F.layer },
     });
   }
   const beams = rawBeams.length ? mergeCollinearLines(rawBeams, Math.max(4, beamMaxPx * 0.5), Math.min(Math.max(30, beamMaxPx * 8), gapCap)) : [];
@@ -815,7 +816,7 @@ export const extractStructuralModel = (
     members.push({
       id: nid('col'), source: 'CAD', type: 'COLUMN', shape: 'rect',
       coordinates: [{ x: c.cx - c.w / 2, y: c.cy - c.h / 2 }, { x: c.cx + c.w / 2, y: c.cy + c.h / 2 }],
-      thickness: 2, properties: { fromCad: true, gridRef: ref, width_mm: round5(toMm(c.w)), depth_mm: round5(toMm(c.h)), rotation_deg: c.deg },
+      thickness: 2, properties: { fromCad: true, gridRef: ref, width_mm: round5(toMm(c.w)), depth_mm: round5(toMm(c.h)), rotation_deg: c.deg, layer: c.layer },
     });
   }
 

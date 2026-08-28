@@ -121,6 +121,7 @@ interface DrawingState {
   setModel: (model: FloorModel | null) => void;
   setSelectedMemberId: (id: string | null) => void;
   updateMember: (id: string, patch: MemberPatch) => void; // 모델 부재 두께/단면 등 인라인 수정
+  updateMembers: (ids: string[], patch: MemberPatch) => void; // 여러 부재에 같은 patch 일괄 적용(유사값 일괄 확정용)
   deleteMember: (id: string) => void; // 모델 부재 삭제 + 원본 캔버스 line 동기 제거
   addLineToModel: (line: StructureLineData) => void; // 수동 그린 부재를 모델에 편입
   autoConnectFreeEnds: (thresh?: number) => void; // 근접 자유단 자동 연결
@@ -210,6 +211,21 @@ export const useDrawingStore = create<DrawingState>((set) => ({
     const m = state.model;
     const apply = <T extends { id: string }>(arr: T[]) =>
       arr.map((it) => (it.id === id ? { ...it, ...patch } : it));
+    return {
+      model: {
+        ...m,
+        columns: apply(m.columns),
+        walls: apply(m.walls),
+        beams: apply(m.beams),
+      },
+    };
+  }),
+  updateMembers: (ids, patch) => set((state) => {
+    if (!state.model || !ids.length) return state;
+    const idSet = new Set(ids);
+    const m = state.model;
+    const apply = <T extends { id: string }>(arr: T[]) =>
+      arr.map((it) => (idSet.has(it.id) ? { ...it, ...patch } : it));
     return {
       model: {
         ...m,

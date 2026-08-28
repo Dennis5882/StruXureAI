@@ -84,6 +84,17 @@ const DICT: Record<string, Record<Lang, string>> = {
   edDone:       { ko: '닫기', en: 'Close', zh: '關閉' },
   edDelete:     { ko: '삭제', en: 'Delete', zh: '刪除' },
 
+  // 검토 탭 — 판정 근거(출처 레이어·측정값·라벨/단일선 여부)
+  evFrom:       { ko: '출처 레이어: {layer}', en: 'From layer: {layer}', zh: '來源圖層：{layer}' },
+  evLabel:      { ko: '도면 라벨값(설계 명시)', en: 'From drawing label (design-specified)', zh: '圖面標註值（設計指定）' },
+  evSingle:     { ko: '단일선 — 도면 내 중앙값으로 추정', en: 'Single-line — estimated from this drawing\'s median', zh: '單線—以圖面中位數估算' },
+  evQuantized:  { ko: '실측 {m} → 표준값 {v}로 스냅', en: 'Measured {m} → snapped to standard {v}', zh: '量測 {m} → 對齊標準值 {v}' },
+
+  // 검토 탭 — 유사값 일괄 적용
+  bulkAsk:      { ko: '같은 값({old})이던 {n}개 더 있음 — {new}로 함께 바꿀까요?', en: '{n} more had the same value ({old}) — apply {new} to them too?', zh: '還有 {n} 個原本也是 {old}－一併改為 {new} 嗎？' },
+  bulkApply:    { ko: '함께 적용', en: 'Apply to all', zh: '一併套用' },
+  bulkDismiss:  { ko: '이것만', en: 'Just this one', zh: '僅此一個' },
+
   // 부재 추가 / 자유단 연결
   addTitle:     { ko: '부재 추가', en: 'Add member', zh: '新增構件' },
   addWall:      { ko: '벽 추가', en: 'Add wall', zh: '新增牆' },

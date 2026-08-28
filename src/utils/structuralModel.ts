@@ -83,6 +83,7 @@ export const buildStructuralModel = (
         rotation: Math.round(m.properties?.rotation_deg ?? 0),
         gridRef: ref,
         lineId: m.id,
+        sourceLayer: m.properties?.layer,
       });
     } else if (m.type === 'WALL' && m.shape === 'line') {
       const ni = nodeId(a), nj = nodeId(b);
@@ -94,6 +95,7 @@ export const buildStructuralModel = (
         gridLine: m.properties?.gridLine,
         singleLine: !!m.properties?.singleLine,
         lineId: m.id,
+        sourceLayer: m.properties?.layer,
       });
     } else if (m.type === 'BEAM' && m.shape === 'line') {
       const ni = nodeId(a), nj = nodeId(b);
@@ -107,6 +109,7 @@ export const buildStructuralModel = (
         widthMeasured: m.properties?.width_measured_mm,
         singleLine: !!m.properties?.singleLine,
         lineId: m.id,
+        sourceLayer: m.properties?.layer,
       });
     }
   }
