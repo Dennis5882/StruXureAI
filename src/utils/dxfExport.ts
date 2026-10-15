@@ -154,7 +154,7 @@ export const buildBuildingDxf = (floors: FloorModel[]): string => {
     const base = f.elevation ?? 0, top = base + (f.height ?? 3000);
     const nb = new Map(f.nodes.map((n) => [n.id, n]));
     for (const w of f.walls) { const a = nb.get(w.i), b = nb.get(w.j); if (a && b) line3d(a.x, a.y, base, b.x, b.y, base, LAYERS.WALL.layer, LAYERS.WALL.color); }
-    for (const bm of f.beams) { const a = nb.get(bm.i), b = nb.get(bm.j); if (a && b) line3d(a.x, a.y, base, b.x, b.y, base, LAYERS.BEAM.layer, LAYERS.BEAM.color); }
+    for (const bm of f.beams) { const a = nb.get(bm.i), b = nb.get(bm.j); if (a && b) line3d(a.x, a.y, top, b.x, b.y, top, LAYERS.BEAM.layer, LAYERS.BEAM.color); }
     for (const c of f.columns) { const nd = nb.get(c.node); if (nd) line3d(nd.x, nd.y, base, nd.x, nd.y, top, LAYERS.COLUMN.layer, LAYERS.COLUMN.color); }
   }
   return assembleDxf(ent, used);

@@ -13,6 +13,23 @@ const removeModelMember = (m: FloorModel, id: string): FloorModel => ({
   beams: m.beams.filter((b) => b.id !== id),
 });
 
+// 캔버스 line 하나가 사라질 때 그 line에서 나온 모델 부재를 전부 뗀다(lineId 기준).
+// 한 line이 여러 부재로 나뉜 경우(자유단 연결의 T자 분할 등)까지 남김없이 지우려고 filter 사용.
+const removeMembersByLine = (m: FloorModel, lineId: string): { model: FloorModel; removed: string[] } => {
+  const removed = [...m.columns, ...m.walls, ...m.beams].filter((it: any) => it.lineId === lineId).map((it) => it.id);
+  if (!removed.length) return { model: m, removed };
+  const gone = new Set(removed);
+  return {
+    model: {
+      ...m,
+      columns: m.columns.filter((c) => !gone.has(c.id)),
+      walls: m.walls.filter((w) => !gone.has(w.id)),
+      beams: m.beams.filter((b) => !gone.has(b.id)),
+    },
+    removed,
+  };
+};
+
 /**
  * 적용할 축척 배율(기하 ÷ 참값). 사용자 오버라이드 > 자동판정 > 1(보정 안함).
  * ⚠️ UI 표시와 실제 좌표 변환이 갈라지지 않도록 반드시 이 함수 하나만 쓸 것.
@@ -292,22 +309,31 @@ export const useDrawingStore = create<DrawingState>((set) => ({
     //    line만 지우면 캔버스에서는 사라지는데 model(부재수·검토 목록·MIDAS 내보내기)엔
     //    그대로 남아 "유령 부재"가 생긴다 — 특히 추출 직후 바로 실행취소하면 매번 재현됨.
     if (!state.model) return { lines };
-    const hit = [...state.model.columns, ...state.model.walls, ...state.model.beams]
-      .find((it: any) => it.lineId === last.id);
-    if (!hit) return { lines };
+    const { model, removed } = removeMembersByLine(state.model, last.id);
+    if (!removed.length) return { lines };
     return {
       lines,
-      model: removeModelMember(state.model, hit.id),
-      selectedMemberId: state.selectedMemberId === hit.id ? null : state.selectedMemberId,
+      model,
+      selectedMemberId: state.selectedMemberId && removed.includes(state.selectedMemberId) ? null : state.selectedMemberId,
     };
   }),
   updateLine: (id, updatedData) => set((state) => ({
     lines: state.lines.map((line) => line.id === id ? { ...line, ...updatedData } : line),
   })),
-  deleteLine: (id) => set((state) => ({
-    lines: state.lines.filter((line) => line.id !== id),
-    selectedLineId: state.selectedLineId === id ? null : state.selectedLineId,
-  })),
+  deleteLine: (id) => set((state) => {
+    const lines = state.lines.filter((line) => line.id !== id);
+    const selectedLineId = state.selectedLineId === id ? null : state.selectedLineId;
+    // ⚠️ undoLine과 같은 이유: 캔버스 지우개로 지운 line의 모델 부재도 같이 떼야 유령 부재가 안 남는다.
+    if (!state.model) return { lines, selectedLineId };
+    const { model, removed } = removeMembersByLine(state.model, id);
+    if (!removed.length) return { lines, selectedLineId };
+    return {
+      lines,
+      selectedLineId,
+      model,
+      selectedMemberId: state.selectedMemberId && removed.includes(state.selectedMemberId) ? null : state.selectedMemberId,
+    };
+  }),
   setSelectedLineId: (id) => set({ selectedLineId: id }),
   clearCadLines: () => set((state) => ({ lines: state.lines.filter((l) => l.source !== 'CAD') })),
   setZoom: (zoom) => set({ zoom: Math.max(0.1, Math.min(zoom, 20)) }),

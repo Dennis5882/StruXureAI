@@ -187,7 +187,8 @@ export const buildMidasRequestsBuilding = (floors: FloorModel[], opts?: MidasOpt
     for (const bm of f.beams) {
       const a = p.get(bm.i), b = p.get(bm.j); if (!a || !b) continue;
       const sid = sectId(bm.depth ?? bm.width * 2, bm.width, 'B', bm.mark); beams++;
-      elems.push({ id: elems.length + 1, TYPE: 'BEAM', MATL: 1, SECT: sid, NODE: [nodeAt(a.x, a.y, base), nodeAt(b.x, b.y, base)], ANGLE: 0, STYPE: 0 });
+      // 보 = 층 상단(top) — 단일층 경로(k≥1)와 동일. base에 두면 최하층 보가 기초 지점(고정)에 걸려 하중을 안 받음.
+      elems.push({ id: elems.length + 1, TYPE: 'BEAM', MATL: 1, SECT: sid, NODE: [nodeAt(a.x, a.y, top), nodeAt(b.x, b.y, top)], ANGLE: 0, STYPE: 0 });
     }
   }
 
@@ -200,6 +201,7 @@ export const buildMidasRequestsBuilding = (floors: FloorModel[], opts?: MidasOpt
 // 요청 시퀀스를 그대로 재현하는 Python 스크립트(MidasAPI 헬퍼)로 직렬화.
 export const toPythonScript = (requests: MidasRequest[], baseUrl = MIDAS_BASE_DEFAULT): string => {
   const lines = [
+    'import json',
     'import requests',
     '',
     `BASE_URL = "${baseUrl}"`,
@@ -215,7 +217,9 @@ export const toPythonScript = (requests: MidasRequest[], baseUrl = MIDAS_BASE_DE
     '# StruXureAI 자동 생성 — 단일층 구조모델 (MIDAS Gen NX)',
   ];
   for (const r of requests) {
-    const body = r.body !== undefined ? `, ${JSON.stringify(r.body)}` : '';
+    // JSON 리터럴(true/false/null)은 Python 이름이 아니라 dict 리터럴로 쓰면 NameError.
+    // JSON 문자열을 json.loads로 넘긴다 — JSON.stringify가 만든 문자열 리터럴은 그대로 유효한 Python 문자열.
+    const body = r.body !== undefined ? `, json.loads(${JSON.stringify(JSON.stringify(r.body))})` : '';
     lines.push(`MidasAPI("${r.method}", "${r.command}"${body})`);
   }
   lines.push('print("완료! MIDAS Gen NX 화면을 확인하세요. (Gen NX 실행 + MAPI-Key 필요)")');

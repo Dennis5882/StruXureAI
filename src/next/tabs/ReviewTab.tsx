@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { AlertTriangle, Pencil, Trash2, Plus, Link2, Copy } from 'lucide-react';
 import { useDrawingStore, MemberPatch } from '../../store/useDrawingStore';
 import { modelQuality } from '../workflow';
@@ -41,8 +41,8 @@ const Stat: React.FC<{ label: string; value: React.ReactNode; tone?: 'ok' | 'war
   );
 };
 
-// 인라인 정수 입력 (mm 등) — 0 이상으로 보정
-const NumField: React.FC<{ label: string; value: number; onChange: (v: number) => void }> = ({ label, value, onChange }) => (
+// 인라인 정수 입력 (mm 등) — 0 이상으로 보정. onBlur = 이 필드 편집 세션 종료(일괄 적용 기준값 리셋용).
+const NumField: React.FC<{ label: string; value: number; onChange: (v: number) => void; onBlur?: () => void }> = ({ label, value, onChange, onBlur }) => (
   <label className="flex items-center gap-1 text-[10px] text-zinc-400">
     <span className="whitespace-nowrap">{label}</span>
     <input
@@ -50,6 +50,7 @@ const NumField: React.FC<{ label: string; value: number; onChange: (v: number) =
       value={value}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => onChange(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+      onBlur={onBlur}
       className="w-14 bg-zinc-950 border border-zinc-700 rounded px-1 py-0.5 text-zinc-100 text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-500"
     />
   </label>
@@ -70,12 +71,20 @@ export const ReviewTab: React.FC = () => {
 
   // 방금 값을 바꾼 부재와, 바꾸기 전 같은 값을 가졌던 다른 부재들(있으면 일괄 적용 제안).
   const [pendingBulk, setPendingBulk] = useState<BulkCandidate | null>(null);
+  // 편집 세션의 "바꾸기 전 값". 키 입력마다 onChange가 불리므로(2→25→250) 직전 값이 아니라
+  // 세션 시작 값을 기준으로 후보를 찾아야 한다 — 안 그러면 중간값 2와 비교돼 배너가 사라짐.
+  const editOrigin = useRef<{ id: string; field: string; val: number } | null>(null);
+  const endEdit = () => { editOrigin.current = null; };
   // arr = 같은 종류의 부재 목록(columns/walls/beams), field = 이번에 바뀐 숫자 필드.
+  // prevVal = 화면에 보이던 값(값 없음은 0으로 표시) — 비교도 같은 기준(?? 0)으로 해야 춤 미지정 보가 후보에 잡힌다.
   const editField = <T extends { id: string }>(arr: T[], id: string, field: string, prevVal: number, v: number) => {
     updateMember(id, { [field]: v } as MemberPatch);
-    if (v === prevVal) return;
-    const ids = arr.filter((it) => it.id !== id && (it as any)[field] === prevVal).map((it) => it.id);
-    setPendingBulk(ids.length ? { anchorId: id, ids, patch: { [field]: v } as MemberPatch, oldVal: prevVal, newVal: v } : null);
+    const o = editOrigin.current;
+    if (!o || o.id !== id || o.field !== field) editOrigin.current = { id, field, val: prevVal };
+    const oldVal = editOrigin.current!.val;
+    if (v === oldVal) { setPendingBulk(null); return; }
+    const ids = arr.filter((it) => it.id !== id && ((it as any)[field] ?? 0) === oldVal).map((it) => it.id);
+    setPendingBulk(ids.length ? { anchorId: id, ids, patch: { [field]: v } as MemberPatch, oldVal, newVal: v } : null);
   };
   const applyBulk = () => {
     if (!pendingBulk) return;
@@ -195,8 +204,8 @@ export const ReviewTab: React.FC = () => {
                   {sel && (
                     <>
                       <div className="flex flex-wrap gap-2 px-2 pb-2 pt-0.5">
-                        <NumField label={n('edWidth')} value={c.width} onChange={(v) => editField(model.columns, c.id, 'width', c.width, v)} />
-                        <NumField label={n('edDepth')} value={c.depth} onChange={(v) => editField(model.columns, c.id, 'depth', c.depth, v)} />
+                        <NumField label={n('edWidth')} value={c.width} onBlur={endEdit} onChange={(v) => editField(model.columns, c.id, 'width', c.width, v)} />
+                        <NumField label={n('edDepth')} value={c.depth} onBlur={endEdit} onChange={(v) => editField(model.columns, c.id, 'depth', c.depth, v)} />
                         <NumField label={n('edRot')} value={c.rotation} onChange={(v) => updateMember(c.id, { rotation: v })} />
                         {delBtn(c.id)}
                       </div>
@@ -227,7 +236,7 @@ export const ReviewTab: React.FC = () => {
                   {sel && (
                     <>
                       <div className="flex flex-wrap gap-2 px-2 pb-2 pt-0.5">
-                        <NumField label={n('edThick')} value={w.thickness} onChange={(v) => editField(model.walls, w.id, 'thickness', w.thickness, v)} />
+                        <NumField label={n('edThick')} value={w.thickness} onBlur={endEdit} onChange={(v) => editField(model.walls, w.id, 'thickness', w.thickness, v)} />
                         {delBtn(w.id)}
                       </div>
                       {pendingBulk?.anchorId === w.id && <BulkBanner n={n} c={pendingBulk} onApply={applyBulk} onDismiss={() => setPendingBulk(null)} />}
@@ -268,8 +277,8 @@ export const ReviewTab: React.FC = () => {
                   {sel && (
                     <>
                       <div className="flex flex-wrap gap-2 px-2 pb-2 pt-0.5">
-                        <NumField label={n('edBeamW')} value={b.width} onChange={(v) => editField(model.beams, b.id, 'width', b.width, v)} />
-                        <NumField label={n('edBeamD')} value={b.depth ?? 0} onChange={(v) => editField(model.beams, b.id, 'depth', b.depth ?? 0, v)} />
+                        <NumField label={n('edBeamW')} value={b.width} onBlur={endEdit} onChange={(v) => editField(model.beams, b.id, 'width', b.width, v)} />
+                        <NumField label={n('edBeamD')} value={b.depth ?? 0} onBlur={endEdit} onChange={(v) => editField(model.beams, b.id, 'depth', b.depth ?? 0, v)} />
                         {delBtn(b.id)}
                       </div>
                       {pendingBulk?.anchorId === b.id && <BulkBanner n={n} c={pendingBulk} onApply={applyBulk} onDismiss={() => setPendingBulk(null)} />}
