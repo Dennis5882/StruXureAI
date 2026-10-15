@@ -50,7 +50,7 @@
 | 후보 | 검색어 / 링크 | 완성도 | 라이선스 | 연결난이도 | 비고 |
 |---|---|---|---|---|---|
 | **mlightcad/cad-viewer** ⭐⭐ | `mlightcad/cad-viewer`, `@mlightcad/cad-simple-viewer` | 높음(활발) | (확인필요, MIT 계열로 보임) | 중간 | **브라우저 전용 DWG/DXF 뷰어·에디터.** HATCH·전체 엔티티·대용량 성능(Three.js 배치/인스턴싱). 코어(`cad-simple-viewer`)는 **프레임워크 무관(React 사용 가능)**. 우리가 쓰는 libredwg-web 저자가 만든 상위 생태계 |
-| libredwg-web (현행) | `mlightcad/libredwg-web` | 성숙 | (LibreDWG=GPL 계열, 확인) | — | 현재 DWG→DXF 변환에 사용 |
+| libredwg-web (현행) | `mlightcad/libredwg-web` | 성숙(활발, 2026-10 v0.8.0) | **GPL-3.0** | — | 현재 DWG→DXF 변환에 사용. v0.43.2에서 0.8.0으로 승급(샘플 9종 무회귀) |
 | three-dxf | `gdsestimating/three-dxf` |  |  | 중간 | three.js 렌더 위임(대안) |
 | (참고)대형 뷰어 | `xeokit/xeokit-sdk`, `LibreCAD/LibreCAD` |  |  | 높음 | BIM/데스크톱급 |
 
