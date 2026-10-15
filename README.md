@@ -132,6 +132,7 @@ export interface StructureLineData {
 
 ## 5. 현재 구현 현황 (Implementation Status)
 
+> ⚠️ 이 절과 아래 Changelog는 **v0.27.1 (2026-06-24)에서 동결**. 이후 현황·이력은 [docs/TODO.md](docs/TODO.md)가 단일 출처.
 > 기준 버전: **v0.27.1** · 검증일: **2026-06-24** · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 아래 상태는 실제 빌드 + 헤드리스 브라우저(Playwright) 동작 검증을 통해 확인한 결과입니다.
 
@@ -187,6 +188,8 @@ export interface StructureLineData {
 ---
 
 ## 6. 최근 업데이트 (Changelog)
+
+> v0.27.1 이후 이력은 [docs/TODO.md](docs/TODO.md) 및 `git log` 참조.
 
 ### 2026-06-24 — v0.27.1 (MIDAS 내보내기가 구조모델 직접 소비)
 - ♻️ **`buildMidasRequests`가 px 부재 재유도 대신 `FloorModel`(절점 그래프)을 소비** → 모델의 접합부 절점 공유가 MIDAS 절점 공유로 직결(단일 진실 소스 관통)

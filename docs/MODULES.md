@@ -4,7 +4,8 @@
 > 이 문서는 살아있는 체크리스트다. GitHub에서 후보를 찾으면 표의 "후보/링크"에 적고,
 > 완성도·라이선스·연결난이도를 채워 넣은 뒤 ✅로 결정한다.
 >
-> 기준 버전: v0.9.0 · 최종 갱신: 2026-06-23
+> 작성 v0.8.2 (2026-06-22) · 최종 갱신 **v0.43.0** (2026-09-02) · 📌 시점 기록 — 최신 상태는 [TODO.md](./TODO.md)
+> ⚠️ 표의 DWG 엔진·OSS 후보 판단은 v0.9.x 시점 기준. 2026-09-02엔 AI 데이터셋·BIM/IFC 조사만 추가
 
 ---
 
@@ -86,12 +87,34 @@
 | 자원 | 링크 | 라이선스 | 비고 |
 |---|---|---|---|
 | ArchCAD-400K + DPSS | `ArchiAI-LAB/ArchCAD` | **ACADEMIC**(상용 X) | 코드+가중치+데이터(40K, HF). 기둥/보 등 구조 포함, 벡터(SVG) 기반. 학습/PoC용 |
-| FloorPlanCAD | `Voxel51/FloorPlanCAD`(HF) | 연구용 | 15k+ 벡터 도면(DWG→SVG). 중화권 출처 → 대만에 상대적으로 가까움 |
+| FloorPlanCAD | `Voxel51/FloorPlanCAD`(HF) | 연구용 | 15k+ 벡터 도면(DWG→SVG). 중화권 출처 → 대만에 상대적으로 가까움. panoptic(벽 semantic seg + 가구·설비 instance seg) |
 | 구조도면 YOLO(논문) | MDPI 10/6/2066 | - | grid/기둥/보 검출 ~80%, 직접 GitHub 코드는 적음 |
+| zimhe/pseudo-floor-plan-12k (HF, 신규) | `huggingface.co/datasets/zimhe/pseudo-floor-plan-12k` | 실험적 | 벽/방/외곽 컨트롤 가능한 text-to-floorplan 생성용. 역방향(생성) 데이터라 인식 학습엔 보조용 |
+| jackluoluo/ArchCAD (HF, 신규) | `huggingface.co/datasets/jackluoluo/ArchCAD` | 연구용 | CAD 도면 멀티모달 이해(VLM 파인튜닝용). ArchCAD-400K와 별개 데이터셋, 이름 혼동 주의 |
+| AECV-Bench (2026-01, 신규) | `arxiv.org/pdf/2601.04819` | - | 건축/엔지니어링 도면 이해 멀티모달 모델 벤치마크. **모델 후보 고를 때 순위 참고용** |
+| 데모 Space들(HF, 신규, 바로 테스트) | `RasterScan/Automated-Floor-Plan-Digitalization`, `Viraj2307/Floor-Plan-Detection`, `sabaridsnfuji/FloorPlanVisionAIAdaptor` | 데모 수준 | 로컬 설치 없이 브라우저에서 먼저 정확도 체감 가능 |
 
 ### 📌 대만/동남아
 - **전용 레포 없음.** 중화권 CAD 데이터셋(ArchCAD/FloorPlanCAD)이 서구 주거 모델보다 대만/동남아에 가까운 **프록시**.
 - 상용 품질은 **자체 라벨링 필요** — 우리는 이미 DWG→벡터 파이프라인이 있으니, 고객 DWG를 학습데이터로 전환 가능(강점).
+
+### 📌 BIM/IFC 변환 (신규 조사, 2026-09-02) — "인식 다음 단계"로 검토
+벡터 인식(위) 다음 단계로, 인식 결과를 IFC(BIM 표준 포맷)로 구조화해서 내보내는 방향. 두 갈래로 나뉨.
+
+**A) Scan-to-BIM (포인트클라우드/도면 → IFC 자동 생성)** — 우리 파이프라인(벡터 인식 → 지오메트리)과 방향이 가장 가까움
+| 자원 | 링크 | 비고 |
+|---|---|---|
+| BIMStruct3D (논문, 2026-04) | `arxiv.org/html/2604.24311v1` | 학습 기반 semantic segmentation + topology-aware 기하 재구성. **벽/기둥/보 등 구조요소 특화** — 우리 모듈③→④ 파이프라인에 가장 근접한 방법론. 코드 공개 여부 확인 필요 |
+| DeKH 데이터셋 | (논문 인용, HF 직링크 미확인) | 고해상도 스캔 + 시맨틱 라벨 + 수작업 정답 BIM 세트 |
+
+**B) IFC 데이터 자체의 LLM 질의/편집** (우리 방향과는 별개, 참고용)
+| 자원 | 링크 | 비고 |
+|---|---|---|
+| sylvainHellin/ifc-bench (HF) | `huggingface.co/datasets/sylvainHellin/ifc-bench` | 21개 프로젝트·37개 IFC 모델, BIM 정보조회 QA 1,027쌍 |
+| Dietmar2020/ifc-bim-qa-dataset (HF) | `huggingface.co/datasets/Dietmar2020/ifc-bim-qa-dataset` | BIM/IFC 도메인 지식 QA 13,485쌍 |
+| BIM-Edit (벤치마크) | `huggingface.co/BIM-Edit` | 자연어 지시 기반 BIM 편집(직접/공간/위상) 324개 태스크 |
+
+- **결론**: 지금 단계(모듈③ 인식)에서는 A(BIMStruct3D류 방법론)만 참고, B는 "인식+편집 다 되고 나서 자연어 인터페이스 붙일 때" 재검토.
 
 - **연결 지점**: [src/utils/api.ts](../src/utils/api.ts) `fetchAIAnalysis` — 출력만 `{ type, points[] }` 형식 유지.
 
@@ -132,6 +155,7 @@
 | DXF 쓰기 | `tarikjabiri/dxf`, `ognjen-petrovic/js-dxf` |  |  | 낮음 | DXF export |
 | PDF | `parallax/jsPDF` |  |  | 낮음 | PDF 출력 |
 | SVG | 캔버스 → SVG export |  |  | 낮음 | 엔진(1)에 따라 내장 |
+| IFC(BIM) (신규, 2026-09-02) | 모듈③ BIM/IFC 섹션 참고 | 미검증 | - | 높음 | 벽/기둥 인식 결과를 IFC로 export — BIMStruct3D 방법론 검토 후 판단 |
 
 ---
 

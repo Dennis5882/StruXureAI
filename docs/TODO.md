@@ -1,7 +1,7 @@
 # StruXureAI — 진행상황 & 앞으로 할 일 (통합 기록)
 
 > 이 문서는 작업 핸드오프용 단일 기록. 대화가 압축돼도 여기서 맥락을 복구한다.
-> 기준 버전: **v0.43.0** · 갱신: 2026-08-28 · 배포: Vercel (`stru-xure-ai.vercel.app`)
+> 작성 v0.13.1 (2026-06-23) · 최종 갱신 **v0.43.0** (2026-08-28) · 🟢 살아있는 기록(최신 상태의 단일 출처) · 배포: Vercel (`stru-xure-ai.vercel.app`)
 > 🌟 북극성: **구조 평면도를 제대로 만들기 + 그 이후를 위한 기반 다지기** (추출 정확도·데이터 기반 우선; 해석/AI는 그 위에)
 > 함께 보기: [DRAWING_CONVENTIONS.md](./DRAWING_CONVENTIONS.md)(**도면 관례집** — 레이어/부재표현/라벨/인코딩/축척/버전) · [ROADMAP.md](./ROADMAP.md)(단계별 로드맵·추천경로) · [STRUCTURAL_MODEL.md](./STRUCTURAL_MODEL.md)(정밀추출 설계) · [MODULES.md](./MODULES.md)(OSS 조사) · [COMPETITIVE_TRACING.md](./COMPETITIVE_TRACING.md)(**MIDAS 순정 Tracing 경쟁분석** — 같은 B1F로 1:1 실측 대조)
 

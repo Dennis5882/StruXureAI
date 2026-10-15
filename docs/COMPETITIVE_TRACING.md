@@ -1,6 +1,6 @@
 # MIDAS Gen NX 순정 "Tracing Modeling" vs StruXureAI — 경쟁분석
 
-> 기준: StruXureAI **v0.41.0** · 작성 2026-07-20
+> 작성 v0.41.0 (2026-07-20) · 최종 갱신 **v0.42.0** (2026-07-20) · 📌 시점 기록 — 최신 상태는 [TODO.md](./TODO.md)
 > 근거: MIDAS Gen NX 2026 순정 Tracing 시연 영상(`tracing .mp4`, 107s) + **동일 파일 `B1F 1.dwg`** 로 우리 앱 실측 대조
 > 함께 보기: [TODO.md](./TODO.md) · [ROADMAP.md](./ROADMAP.md) · [DRAWING_CONVENTIONS.md](./DRAWING_CONVENTIONS.md)
 
